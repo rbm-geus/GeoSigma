@@ -5,13 +5,10 @@ Created on Thu May 21 11:30:02 2026
 @author: RBM, GEUS
 """
 
-import os
-import glob
 import shutil
 from pathlib import Path
 
 import rasterio
-import numpy as np
 
 
 def perturb_layer_boundaries(

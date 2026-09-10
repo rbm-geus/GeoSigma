@@ -5,7 +5,6 @@ Created on Tue Feb 10 13:05:30 2026
 @author: rbm
 """
 
-import numpy as np
 import rasterio
 
 from .grid_meta import make_grid_meta

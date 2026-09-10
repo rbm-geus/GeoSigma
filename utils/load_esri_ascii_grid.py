@@ -30,7 +30,6 @@ def load_esri_ascii_grid(fname):
     with open(fname, "r") as f:
         # ESRI ASCII headers are 5 or 6 lines; read keyword/value pairs until a
         # line no longer looks like a header entry.
-        data_lines = []
         while True:
             pos = f.tell()
             parts = f.readline().split()

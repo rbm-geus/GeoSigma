@@ -3,7 +3,6 @@
 # Copyright (c) 2024 Thomas Mejer Hansen. See THIRD_PARTY_NOTICES.md.
 
 import numpy as np
-import time
 
 
 def least_squares_inversion(G, Cm, Cd, m0, d0, type=2, use_tqdm=True):

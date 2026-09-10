@@ -74,9 +74,6 @@ def ascii_to_geotiff(ascii_path, tif_path=None, crs=None, crop_extent=None):
     # --------------------------------------------------------------
 
     xmin_full = xllcorner
-    xmax_full = xllcorner + ncols * cellsize
-
-    ymin_full = yllcorner
     ymax_full = yllcorner + nrows * cellsize
 
     # --------------------------------------------------------------

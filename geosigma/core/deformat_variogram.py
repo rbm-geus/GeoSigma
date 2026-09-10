@@ -31,7 +31,8 @@ def deformat_variogram(txt):
         par2 = args[0]
         if len(args) > 1:
             print(
-                "Warning: additional variogram parameters (anisotropy/angle) are ignored. Only isotropic is supported."
+                "Warning: additional variogram parameters (anisotropy/angle) "
+                "are ignored. Only isotropic is supported."
             )
         V_list.append({"type": vtype, "par1": float(par1), "par2": par2})
     return V_list

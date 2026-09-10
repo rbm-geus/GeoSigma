@@ -49,7 +49,8 @@ def get_reals_cholesky(cov, Nreals=1, m0=None, verbose=False):
 
     if verbose:
         print(
-            f"get_reals_cholesky: generated {Nreals} realization(s) with {nvar} variables."
+            f"get_reals_cholesky: generated {Nreals} realization(s) "
+            f"with {nvar} variables."
         )
 
     return reals

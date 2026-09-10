@@ -96,7 +96,7 @@ layers around this output — no engine change needed. The peat *content*
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Callable, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
