@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 # -------------------------------------------------
 # Laplace transfer function (ftot_laplace)
 # -------------------------------------------------
-def ftot_laplace(l, a, b, c, d, e, g):
+def ftot_laplace(abs_laplacian, a, b, c, d, e, g):
     """
     Transfer function for Laplacian-based probability enhancement.
 
     Parameters
     ----------
-    l : ndarray
+    abs_laplacian : ndarray
         Absolute Laplacian values
     a, b, c, d, e, g : floats
         Transfer function parameters (same meaning as MATLAB version)
@@ -37,12 +37,12 @@ def ftot_laplace(l, a, b, c, d, e, g):
         print(f"Gradient changed to {g:.3f} to ensure curve continuity")
 
     # First branch (tanh transition)
-    f1 = c / 2 * (np.tanh((l - a) * g) + 1)
+    f1 = c / 2 * (np.tanh((abs_laplacian - a) * g) + 1)
 
     # Second branch (Lorentz-type decay)
-    f2 = (c - d) * (1 / (((l - b) / e) ** 2 + 1)) + d
+    f2 = (c - d) * (1 / (((abs_laplacian - b) / e) ** 2 + 1)) + d
 
-    ftot = np.where(l < b, f1, f2)
+    ftot = np.where(abs_laplacian < b, f1, f2)
 
     return ftot
 
