@@ -67,8 +67,14 @@ def ReadSurfer7(filename):
         # Replace blanks with NaN
         Data[Data == BlankValue] = np.nan
 
-        # Reshape as per Surfer structure
-        Z = Data.reshape((GridColumns, GridRows)).T
+        # Reshape as per Surfer structure.
+        # MATLAB's ReadSurfer7.m does ``reshape(Data,[Cols,Rows])'`` where MATLAB
+        # reshape is COLUMN-major (Fortran order). NumPy reshape defaults to
+        # row-major (C order), so the literal ``reshape((Cols,Rows)).T`` scrambles
+        # the data for any non-square grid (it produced striped, mis-classed
+        # output). The C-order reshape to (Rows, Cols) reproduces MATLAB exactly:
+        # both give Z[r, c] = Data[r*Cols + c].
+        Z = Data.reshape((GridRows, GridColumns))
 
         # --- Output variables ---
         DataOut = Z

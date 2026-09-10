@@ -1,0 +1,69 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+title: GeoSigma
+abstract: >-
+  A model-agnostic Python library for generating hydrostratigraphic
+  realizations from manually interpreted layer models using geostatistical
+  simulation. Includes a variance-map theme engine for combining
+  heterogeneous geophysical and borehole data sources into per-layer
+  uncertainty maps.
+type: software
+authors:
+  - given-names: Rasmus Bødker
+    family-names: Madsen
+    email: rbm@geus.dk
+    affiliation: "Geological Survey of Denmark and Greenland (GEUS)"
+    orcid: "https://orcid.org/0000-0001-8538-7491"
+  - given-names: Mathias Busk
+    family-names: Nielsen
+    email: dahl@niras.dk
+    affiliation: NIRAS
+    orcid: "https://orcid.org/0000-0003-4816-0241"
+  - given-names: Frederik Alexander
+    family-names: Falk
+    email: frederikfalk@geo.au.dk
+    affiliation: "Department of Geoscience, Aarhus University"
+    orcid: "https://orcid.org/0009-0003-1023-5161"
+version: 0.1.0
+license: ISC
+repository-code: "https://github.com/rbm-geus/GeoSigma"
+url: "https://github.com/rbm-geus/GeoSigma"
+# date-released and doi are added in a follow-up commit once the v0.1.0 tag
+# mints the Zenodo DOI.
+keywords:
+  - geostatistics
+  - hydrogeology
+  - hydrostratigraphy
+  - uncertainty quantification
+  - kriging
+  - geophysics
+  - Python
+
+# The published article describing the mathematics this library implements.
+# It is a reference, not a preferred-citation: it documents the method, while
+# this file describes the software.
+references:
+  - type: article
+    title: "Probabilistic Modeling and Uncertainty Simulations of National-Scale Hydrostratigraphic Models: An Example from Denmark"
+    doi: "10.1007/s11004-025-10263-9"
+    journal: "Mathematical Geosciences"
+    publisher:
+      name: "Springer"
+    year: 2026
+    month: 2
+    authors:
+      - given-names: Rasmus Bødker
+        family-names: Madsen
+        orcid: "https://orcid.org/0000-0001-8538-7491"
+      - given-names: Frederik Alexander
+        family-names: Falk
+        orcid: "https://orcid.org/0009-0003-1023-5161"
+      - given-names: Ingelise
+        family-names: Møller
+        orcid: "https://orcid.org/0000-0002-1154-3700"
+      - given-names: Lars
+        family-names: Troldborg
+        orcid: "https://orcid.org/0000-0002-7366-1438"
+      - given-names: Anne-Sophie
+        family-names: Høyer
+        orcid: "https://orcid.org/0000-0002-9105-5554"

@@ -1,0 +1,27 @@
+# PACES theme — uncertainty model (Danish built-in, expressed declaratively).
+#
+# This reproduces geosigma.themes.themes.paces_spec(n_prereq=13) for the 19-layer
+# Danish model: a two-regime range_model split at the Quaternary / pre-Quaternary
+# boundary (0-based layer 13 == label L14). See geosigma/themes/spec_io.py.
+name: PACES
+search_radius: 1
+cert_fun: FRAFA_apr2023
+combine: nearest
+
+# attribute -> tie reducer. PACES needs only the interpreted boundary depth;
+# its depth-of-investigation is fixed at 18 m, folded into the mask below.
+attributes:
+  depth: mean
+
+# Per-layer correlation range. Two regimes: the Quaternary layers use the graded
+# complexity table; the pre-Quaternary layers (L14 onward) use a flat 500 m range.
+range_model:
+  - layers: "L01-L13"                       # Quaternary
+    range_by_complexity: [100, 500, 400, 250, 100]
+  - layers: "L14-L19"                       # pre-Quaternary
+    range_by_complexity: [500, 500, 500, 500, 500]
+
+# var0 grows with interpreted depth; flat plateau half-width; mask below DOI=18 m.
+var0: "(0.5 * maximum(2, 0.25*depth))**2"
+kernel: "75"
+mask: "depth > 18"

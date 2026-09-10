@@ -1,0 +1,30 @@
+# droneTEM theme — a HYPOTHETICAL non-Danish information source, to demonstrate
+# the format is genuinely general. A drone-borne TEM system: dense lateral
+# coverage, shallow but well-resolved, thickness-driven var0, depth-of-
+# investigation mask. It constrains only the upper layers, and its geological
+# setting has NO complexity/range regime change.
+name: droneTEM
+search_radius: 4
+cert_fun: ILM_sep2023
+combine: nearest
+
+attributes:
+  depth: mean
+  thick: min
+  doi: mean
+
+# No regime change: a SINGLE group covering all layers. (A different CRS / layer
+# count than the Danish model is fine — nothing here is Denmark-specific.)
+range_model:
+  - layers: "all"
+    range_by_complexity: [50, 300, 250, 150, 80]
+
+# Thickness-driven var0 (like the TEM family); plateau half-width grows with
+# depth; masked where the boundary lies below the depth of investigation.
+var0: "(0.5 * 1.2 * thick)**2"
+kernel: "maximum(depth, 60)"
+mask: "doi < depth"
+
+# A shallow system: it only informs the top four boundaries; deeper layers get
+# the no-information sentinel.
+active_layers: [0, 1, 2, 3]

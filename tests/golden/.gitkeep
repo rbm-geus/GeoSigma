@@ -1,0 +1,2 @@
+# Golden .npz reference arrays live here (see tests/golden.py).
+# Committed alongside the tests that produce them, from Phase 1 onward.

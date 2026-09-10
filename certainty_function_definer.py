@@ -6,12 +6,16 @@ def certainty_function_definer(cert_fun_choice):
             return np.where(dist <= width, sill, sill * np.exp(-3 * (dist - width)**2 / range_**2))
     
     elif cert_fun_choice == 'ILM_sep2023':
+        # Multiplicative MATLAB form (dist<=width).*sill.*exp(...), NOT
+        # np.where(..., 0): at a no-data cell dist (or range) is NaN, and
+        # 0*NaN=NaN propagates to the NODATA sentinel just like MATLAB's
+        # Grid(isnan)=100000 — whereas np.where would leak a literal 0 -> 1/0=+inf.
         def cert_fun(dist, range_, width, sill):
-            return np.where(dist <= width, sill * np.exp(-3 * (dist - width)**2 / range_**2), 0)
-    
+            return (dist <= width) * sill * np.exp(-3 * (dist - width)**2 / range_**2)
+
     elif cert_fun_choice == 'ILM_oct2023':
         def cert_fun(dist, range_, width, sill):
-            return np.where(dist <= width, sill * np.exp(-3 * dist**2 / range_**2), 0)
+            return (dist <= width) * sill * np.exp(-3 * dist**2 / range_**2)
     
     elif cert_fun_choice == 'RBM_oct2023':
         def cert_fun_rbm_oct_ins(dist, range_, width, sill, damp):

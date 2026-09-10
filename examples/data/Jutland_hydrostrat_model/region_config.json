@@ -1,0 +1,28 @@
+{
+  "name": "Jutland_hydrostrat_model (sample)",
+  "layer_names": [
+    "top_surface",
+    "layer_1_bottom",
+    "layer_2_bottom",
+    "layer_3_bottom",
+    "layer_4_bottom",
+    "layer_5_bottom",
+    "layer_6_bottom",
+    "layer_7_bottom",
+    "layer_8_bottom",
+    "layer_9_bottom",
+    "layer_10_bottom",
+    "layer_11_bottom",
+    "layer_12_bottom",
+    "layer_13_bottom",
+    "layer_14_bottom",
+    "layer_15_bottom"
+  ],
+  "has_bottom": false,
+  "surface_dir": "examples/data/Jutland_hydrostrat_model",
+  "file_ext": ".tif",
+  "crs": "EPSG:25832",
+  "metadata": {
+    "note": "Generic example config for the bundled sample GeoTIFFs; not the real Danish layer scheme."
+  }
+}
