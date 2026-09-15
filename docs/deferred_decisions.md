@@ -100,6 +100,48 @@ v0.1.0.
 
 ---
 
+## Repository and mirroring
+
+### GEUS GitLab mirror is manual (dual push), not pull mirroring
+
+**State.** GitHub (`https://github.com/rbm-geus/GeoSigma`) is the canonical
+remote. GEUS GitLab (`https://geusgitlab.geus.dk/surface/tools/geosigma`) is a
+backup mirror, kept in sync by an extra push URL on `origin`: `origin` has one
+fetch URL (GitHub) and two push URLs (GitHub + GitLab), so a single
+`git push` publishes to both. A separate `gitlab` remote exists only for
+inspecting the mirror on its own (`git ls-remote gitlab`).
+
+**Why manual.** GitLab's automatic *pull mirroring* (GitLab fetching from
+GitHub on a schedule) is a Premium feature; GEUS runs the Community Edition,
+so it is not available. Dual push is the lightweight substitute: no server-side
+configuration, but the mirror is only as current as the last push from a
+machine with both push URLs configured.
+
+**Things to know.**
+
+- **Access token expiry.** HTTPS access to GEUS GitLab uses a Personal Access
+  Token (scope `write_repository`) stored in Git Credential Manager, not a
+  password. The token has an expiry date. When it expires, `git push` will
+  succeed on GitHub and **fail on GitLab** with `HTTP Basic: Access denied`;
+  the fix is to create a new token at
+  `https://geusgitlab.geus.dk/-/user_settings/personal_access_tokens` and let
+  Git Credential Manager store it on the next push.
+- **Tags are not pushed by default.** `git push` sends branches only; run
+  `git push --tags` (or `git push --follow-tags`) for tags to reach both
+  remotes. This matters for release tags such as `v0.1.0`, which Zenodo keys
+  on.
+- **Per-clone configuration.** The second push URL lives in the local
+  `.git/config`, not in the repository. A fresh clone pushes to GitHub only
+  until the two `git remote set-url --add --push origin …` lines are re-run
+  (GitHub first — adding a push URL replaces the default, so GitHub must be
+  re-added explicitly).
+
+**Revisit if** GEUS GitLab is upgraded to a tier with pull mirroring, or if a
+CI job (GitHub Actions pushing to GitLab with a deploy token) becomes worth
+the setup cost.
+
+---
+
 ## Library behaviour
 
 ### Shallow-floor unification into `mask_fn` — v0.2.0
