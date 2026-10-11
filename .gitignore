@@ -32,3 +32,7 @@ examples/diag_combine_tail.py
 examples/extract_combine_crop.py
 examples/output/
 tools/inventory_plotting_mat.py
+
+# Regenerated every time example_train_rangesill_nn.py is run; the actual
+# shipped default lives in geosigma/preprocess/data/ and *is* tracked.
+examples/data/rangesill_nn/

@@ -7,6 +7,7 @@ The library is designed to be model-agnostic: the same workflow applies to any h
 ## Capabilities
 
 - Construct spatial variance maps and correlation structures for layer boundaries from multiple geophysical data themes (TEM, PACES, gamma logs, seismic reflectors, etc.)
+- Estimate the local variogram range at sampled points with a pretrained neural-network estimator (`geosigma.preprocess.rangesill`; sill is a closed-form statistic, not learned)
 - Condition each layer boundary by local kriging, then draw geostatistical realizations directly from the posterior covariance by Cholesky decomposition (`get_reals_cholesky`) — not by sequential simulation
 - Export results as GeoTIFF rasters for use in downstream modelling workflows
 - Integrate with PEST for parameter perturbation and ensemble-based uncertainty propagation
@@ -43,6 +44,10 @@ pip install -e .
 `environment.yml` is the authoritative conda dependency declaration;
 `pyproject.toml` declares the pip dependencies.
 
+The range/sill neural-network estimator (`geosigma.preprocess.rangesill`) needs
+the optional `torch` dependency, kept out of the core install because it's large
+and platform-specific: `pip install -e ".[nn]"`.
+
 ### Check the install
 
 ```bash
@@ -60,6 +65,7 @@ The `examples/` directory contains standalone scripts demonstrating key workflow
 - `demo_geosigma_pipeline.py` — full workflow from surface input to geostatistical realizations
 - `demo_synthetic_kriging_inversion.py` — synthetic kriging with masking
 - `demo_inpox_basic_jutland_hydrostrat.py` — INPOX conditioning point selection on a real model
+- `example_train_rangesill_nn.py` — trains the range/sill neural-network estimator from scratch on synthetic data (needs the `nn` extra); this is also the reproducible recipe behind the pretrained default
 
 Example data (the Jutland hydrostratigraphic model) is included in `examples/data/`.
 
