@@ -53,23 +53,25 @@ n_cells = z.size
 # 2. INPOX point extraction
 # -------------------------------------------------
 # --- Parameters ---
+# Madsen et al. (2024) Table 1, real-world case (T4).
 ext_vals = {
-    "p0": 0.1,
-    "a": 0.5,
-    "b": 7,
-    "c": 0.5,
-    "d": -0.1,
-    "e": 1,
-    "g": 6,
+    "P0": 0.1,
+    "L0": 1.0,
+    "A": 1.5,
+    "B": 3.0,
+    "C": 5.0,
+    "D": 1.0,
+    "E": 0.8,
+    "g": 2.0,
     "x0": meta["xllcorner"],
     "y0": meta["yllcorner"],
 }
 
 
 #Vizualize the chosen transfer function
-visualize_transfer_function(z, ext_vals, dx=1.0, dy=1.0, lap_max=10)
+visualize_transfer_function(z, ext_vals, lap_max=10)
 
-points, _, _, _ = draw_points_inpox(z, ext_vals, dx=dx)
+points = draw_points_inpox(z, ext_vals, dx=dx)
 
 # Observed points
 ip_buf = points.ravel()

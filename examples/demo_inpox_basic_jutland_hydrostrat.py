@@ -10,14 +10,16 @@ z, meta = load_geotiff_grid("examples/data/Jutland_hydrostrat_model/top_surface.
 x, y, xx, yy = grid_coordinates_from_esri_meta(meta)
 
 # --- INPOX Parameters ---
+# Madsen et al. (2024) Table 1, real-world case (T4).
 ext_vals = {
-    "p0": 0.1,
-    "a": 0.5,
-    "b": 7,
-    "c": 0.5,
-    "d": -0.1,
-    "e": 1,
-    "g": 6,
+    "P0": 0.1,
+    "L0": 1.0,
+    "A": 1.5,
+    "B": 3.0,
+    "C": 5.0,
+    "D": 1.0,
+    "E": 0.8,
+    "g": 2.0,
     "x0": meta["xllcorner"],
     "y0": meta["yllcorner"],
 }
@@ -26,7 +28,7 @@ ext_vals = {
 # ============================================================
 # Figure 1: Vizualize the chosen transfer function
 # ============================================================
-visualize_transfer_function(z, ext_vals, dx=1.0, dy=1.0, lap_max=10)
+visualize_transfer_function(z, ext_vals, lap_max=10)
 
 
 
@@ -35,7 +37,12 @@ visualize_transfer_function(z, ext_vals, dx=1.0, dy=1.0, lap_max=10)
 # ============================================================
 
 
-points, plap, lapl, plap_extra = draw_points_inpox(z, ext_vals, dx=meta["cellsize"])
+points, details = draw_points_inpox(
+    z, ext_vals, dx=meta["cellsize"], dy=meta["cellsize"], return_details=True
+)
+lapl = details["laplacian"]
+plap = details["probability"]
+plap_extra = details["transfer"]
 
 lap_surface = lapl.ravel()
 actual_draw_percent = 100 * np.sum(points) / points.size
@@ -78,7 +85,9 @@ fig.colorbar(im4, ax=axes[1, 1])
 Nrep = 50;
 points_rep = np.zeros(np.shape(points))
 for i in range(Nrep):
-    points_i, _, _, _ = draw_points_inpox(z, ext_vals, dx=meta["cellsize"])
+    points_i = draw_points_inpox(
+        z, ext_vals, dx=meta["cellsize"], dy=meta["cellsize"]
+    )
     points_rep += points_i
 
 
