@@ -73,7 +73,7 @@ def local_kriging_setup_img(
     coords_cd = np.column_stack(
         (GLOBAL["xx_norm"][ip_buf] * dx, GLOBAL["yy_norm"][ip_buf] * dy)
     )
-    statmod_noi = f"{curvariance} Gau({currange})"
+    statmod_noi = f"1 Gau({currange})"
     Cd_shape, _ = precal_cov(coords_cd, coords_cd, statmod_noi)
 
     # Observation uncertainties as diagonal matrix

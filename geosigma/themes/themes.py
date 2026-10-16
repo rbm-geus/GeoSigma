@@ -80,7 +80,7 @@ def paces_spec(n_prereq: int) -> ThemeSpec:
         attributes=("depth",),
         reducers={"depth": "mean"},
         # var0 = (0.5 * max(2, 0.25*depth))^2 ; kernel = 75 ; DOI fixed at 18.
-        var0_fn=lambda a: (0.5 * np.maximum(2.0, 0.25 * a["depth"])) ** 2,
+        var0_fn=lambda a: (0.5 * np.fmax(2.0, 0.25 * a["depth"])) ** 2,
         kernel_fn=lambda a: np.full_like(a["depth"], 75.0),
         mask_fn=lambda a: 18.0 < a["depth"],
     )
@@ -103,7 +103,7 @@ def pacep_spec(n_prereq: int, cert_fun_name: str = "ILM_sep2023") -> ThemeSpec:
         cert_fun_name=cert_fun_name,
         attributes=("depth", "doi"),
         reducers={"depth": "mean", "doi": "mean"},
-        var0_fn=lambda a: (0.5 * np.maximum(5.0, 0.5 * a["depth"])) ** 2,
+        var0_fn=lambda a: (0.5 * np.fmax(5.0, 0.5 * a["depth"])) ** 2,
         kernel_fn=lambda a: np.full_like(a["depth"], 75.0),
         mask_fn=lambda a: a["doi"] < a["depth"],
         post_reduce_fn=_pacep_post_reduce,
@@ -156,8 +156,8 @@ def _mep_var0(a):
     depth = a["depth"]
     is_wenner = a["mep_type"]
     is_other = is_wenner == 0
-    wenner_var0 = 0.5 * np.maximum(2.4, 0.25 * depth)
-    other_var0 = 0.5 * np.maximum(1.25, 0.15 * depth)
+    wenner_var0 = 0.5 * np.fmax(2.4, 0.25 * depth)
+    other_var0 = 0.5 * np.fmax(1.25, 0.15 * depth)
     return (wenner_var0 * is_wenner + other_var0 * is_other) ** 2
 
 
@@ -255,7 +255,7 @@ def skytem_spec(n_prereq: int, cert_fun_name: str = "ILM_sep2023") -> ThemeSpec:
         attributes=("depth", "thick", "doi"),
         reducers={"depth": "mean", "thick": "min", "doi": "mean"},
         var0_fn=_skytem_var0,
-        kernel_fn=lambda a: np.maximum(2.0 * a["depth"], 75.0),
+        kernel_fn=lambda a: np.fmax(2.0 * a["depth"], 75.0),
         mask_fn=lambda a: a["doi"] < a["depth"],
     )
 
@@ -277,14 +277,14 @@ def fewtem_spec(n_prereq: int) -> ThemeSpec:
         attributes=("depth", "doi"),
         reducers={"depth": "mean", "doi": "mean"},
         var0_fn=_fewtem_var0,
-        kernel_fn=lambda a: np.maximum(a["depth"], 75.0),
+        kernel_fn=lambda a: np.fmax(a["depth"], 75.0),
         mask_fn=lambda a: a["doi"] < a["depth"],
     )
 
 
 def _fewtem_var0(a):
     # var0 = (max(1.2, 0.5*0.15*depth) + 2)^2 ; sentinel 10000 where depth < 10.
-    var0 = (np.maximum(1.2, 0.5 * 0.15 * a["depth"]) + 2.0) ** 2
+    var0 = (np.fmax(1.2, 0.5 * 0.15 * a["depth"]) + 2.0) ** 2
     var0[a["depth"] < 10.0] = 10000.0
     return var0
 
@@ -299,7 +299,7 @@ def manytem_spec(n_prereq: int) -> ThemeSpec:
         attributes=("depth", "thick", "doi"),
         reducers={"depth": "mean", "thick": "mean", "doi": "mean"},
         var0_fn=_manytem_var0,
-        kernel_fn=lambda a: np.maximum(a["depth"], 75.0),
+        kernel_fn=lambda a: np.fmax(a["depth"], 75.0),
         mask_fn=lambda a: a["doi"] < a["depth"],
     )
 
@@ -321,7 +321,7 @@ def ttem_spec(n_prereq: int) -> ThemeSpec:
         attributes=("depth", "thick", "doi"),
         reducers={"depth": "mean", "thick": "mean", "doi": "mean"},
         var0_fn=_ttem_var0,
-        kernel_fn=lambda a: np.maximum(a["depth"], 75.0),
+        kernel_fn=lambda a: np.fmax(a["depth"], 75.0),
         mask_fn=lambda a: a["doi"] < a["depth"],
     )
 
