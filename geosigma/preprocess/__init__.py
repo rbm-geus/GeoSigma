@@ -5,17 +5,78 @@
 # Co-authors: Frederik Falk; Claude (Anthropic)
 """geosigma.preprocess — per-layer preprocessing.
 
-masks (``get_layermasks``), point drawing (``drawpoints``), windowed range/sill
-extraction via a pluggable ``RangeSillEstimator``, and clustering (SOM +
-post-processing + cluster stats).
+Point drawing lives in :mod:`geosigma.inpox` (``draw_points_inpox``, already
+implemented). This package covers what happens to those points next:
 
-Scaffold only (Phase 0); populated in **Phase 5** (depends on Phases 2 & 4).
+* :mod:`~geosigma.preprocess.rangesill` — windowed range/sill extraction via a
+  pluggable ``RangeSillEstimator``, defaulting to a pretrained network
+  (``NNRangeSillEstimator`` / ``load_default_rangesill_estimator``).
+* :mod:`~geosigma.preprocess.clusters` — grouping per-point range/sill
+  estimates into kriging zones: a simple point-array clusterer
+  (``cluster_range_sill``, k-means or SOM), the per-cluster range/sill
+  reduction (``cluster_stats``), and oversized-component splitting
+  (``post_process_clusters``).
+* :mod:`~geosigma.preprocess.som` — a Kohonen self-organizing map
+  (``train_som`` / ``som_predict``), the clustering engine behind both
+  ``cluster_range_sill(method="som")`` and ``som_cluster_grid`` below.
+* :mod:`~geosigma.preprocess.som_clusters` — ``som_cluster_grid``, the
+  literal, whole-grid translation of ``get_clusters.m`` (SOM clustering plus
+  its neighbourhood-smoothing and gap-filling passes), for when you want
+  output that corresponds to the reference pipeline's rather than just *a*
+  reasonable clustering.
 
-Exception: :func:`~geosigma.preprocess.doi.resolve_doi` — the model-agnostic
-per-sounding depth-of-investigation resolver (conductive-horizon DOI cap) — is
-already implemented, since the variance-map themes need it ahead of Phase 5.
+Masks (``get_layermasks``) are still scaffold-only, deferred to **Phase 5**.
+
+Exception (pre-existing): :func:`~geosigma.preprocess.doi.resolve_doi` — the
+model-agnostic per-sounding depth-of-investigation resolver (conductive-
+horizon DOI cap) — was implemented ahead of the rest of this package, since
+the variance-map themes needed it first.
 """
 
 from .doi import resolve_doi
+from .rangesill import (
+    RangeSillEstimator,
+    NNRangeSillEstimator,
+    load_default_rangesill_estimator,
+    extract_residual_patch,
+    sample_scatter_points,
+    interpolate_scatter_points,
+    estimate_range_sill_grid,
+    RangeSillSurface,
+    estimate_range_sill_surface,
+    build_range_cholesky_lookup,
+    TrainingData,
+    generate_training_data,
+    save_training_data,
+    load_training_data,
+    train_rangesill_estimator,
+)
+from .clusters import cluster_range_sill, cluster_stats, post_process_clusters
+from .som import train_som, som_predict
+from .som_clusters import som_cluster_grid, build_kriging_zones
 
-__all__ = ["resolve_doi"]
+__all__ = [
+    "resolve_doi",
+    "RangeSillEstimator",
+    "NNRangeSillEstimator",
+    "load_default_rangesill_estimator",
+    "extract_residual_patch",
+    "sample_scatter_points",
+    "interpolate_scatter_points",
+    "estimate_range_sill_grid",
+    "RangeSillSurface",
+    "estimate_range_sill_surface",
+    "build_range_cholesky_lookup",
+    "TrainingData",
+    "generate_training_data",
+    "save_training_data",
+    "load_training_data",
+    "train_rangesill_estimator",
+    "cluster_range_sill",
+    "cluster_stats",
+    "post_process_clusters",
+    "train_som",
+    "som_predict",
+    "som_cluster_grid",
+    "build_kriging_zones",
+]
