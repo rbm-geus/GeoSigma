@@ -71,6 +71,8 @@ __all__ = [
     "sample_scatter_points",
     "interpolate_scatter_points",
     "estimate_range_sill_grid",
+    "RangeSillSurface",
+    "estimate_range_sill_surface",
     "build_range_cholesky_lookup",
     "TrainingData",
     "generate_training_data",
@@ -112,9 +114,46 @@ class RangeSillEstimator(Protocol):
         ...
 
 
-def _build_net(hidden: int):
-    """Build the (untrained) range-estimation CNN. Imports torch lazily."""
+#: Network architectures :func:`_build_net` understands.
+ARCHITECTURES = ("conv", "dense")
+
+
+def _build_net(
+    hidden: int,
+    architecture: str = "conv",
+    patch_size: int = DEFAULT_PATCH_SIZE,
+):
+    """Build the (untrained) range-estimation network. Imports torch lazily.
+
+    ``architecture="conv"`` is the default and the one the shipped estimator
+    uses; ``"dense"`` is a plain fully-connected net on the flattened grid.
+    See :class:`NNRangeSillEstimator` for the trade-offs.
+    """
     import torch.nn as nn
+
+    if architecture not in ARCHITECTURES:
+        raise ValueError(
+            f"architecture must be one of {ARCHITECTURES}, got {architecture!r}"
+        )
+
+    if architecture == "dense":
+
+        class _DenseRangeNet(nn.Module):
+            # patch_size is structural here, unlike the conv net below: the
+            # first layer's input width is fixed at build time.
+            def __init__(self, hidden: int, patch_size: int):
+                super().__init__()
+                self.head = nn.Sequential(
+                    nn.Flatten(),
+                    nn.Linear(patch_size * patch_size, hidden),
+                    nn.ReLU(),
+                    nn.Linear(hidden, 1),
+                )
+
+            def forward(self, x):
+                return self.head(x).squeeze(-1)
+
+        return _DenseRangeNet(hidden, patch_size)
 
     class _RangeNet(nn.Module):
         def __init__(self, hidden: int):
@@ -179,6 +218,22 @@ class NNRangeSillEstimator:
         Width of the network's hidden linear layer. Only matters when
         building a fresh (untrained) network; :meth:`load` reads it from the
         saved file instead.
+    architecture : {"conv", "dense"}, default "conv"
+        Which network to build. ``"conv"`` is two small convolution layers
+        feeding a linear head; ``"dense"`` is a plain fully-connected net on
+        the flattened grid. Like ``hidden``, this only matters when building
+        a fresh network — :meth:`load` reads it from the saved file (files
+        written before this option existed are read as ``"conv"``).
+
+        ``"conv"`` is the default for two measured reasons. On an identical
+        100k-sample set, identical hyperparameters and the same held-out
+        fields, it scored a log-log correlation of 0.767 against 0.653
+        (dense, matched width), 0.630 (dense, 64 wide) and 0.723 (dense,
+        128+64) — while using 3-24x *fewer* parameters, so this is an
+        inductive-bias result rather than a capacity one. And
+        ``AdaptiveAvgPool2d`` lets the conv net accept any ``patch_size``,
+        whereas the dense net fixes its input width at build time, so a
+        dense estimator is tied to the ``patch_size`` it was trained at.
 
     Notes
     -----
@@ -189,14 +244,26 @@ class NNRangeSillEstimator:
     data variety.
     """
 
-    def __init__(self, patch_size: int = DEFAULT_PATCH_SIZE, hidden: int = 16):
+    def __init__(
+        self,
+        patch_size: int = DEFAULT_PATCH_SIZE,
+        hidden: int = 16,
+        architecture: str = "conv",
+    ):
+        if architecture not in ARCHITECTURES:
+            raise ValueError(
+                f"architecture must be one of {ARCHITECTURES}, got {architecture!r}"
+            )
         self.patch_size = patch_size
         self.hidden = hidden
+        self.architecture = architecture
         self._model = None  # built lazily by _net(), or set directly by training/load
 
     def _net(self):
         if self._model is None:
-            self._model = _build_net(self.hidden)
+            self._model = _build_net(
+                self.hidden, self.architecture, patch_size=self.patch_size
+            )
         return self._model
 
     def predict(self, patch: np.ndarray) -> tuple[float, float]:
@@ -230,17 +297,26 @@ class NNRangeSillEstimator:
                 "state_dict": self._net().state_dict(),
                 "patch_size": self.patch_size,
                 "hidden": self.hidden,
+                "architecture": self.architecture,
             },
             path,
         )
 
     @classmethod
     def load(cls, path) -> "NNRangeSillEstimator":
-        """Load an estimator previously written by :meth:`save`."""
+        """Load an estimator previously written by :meth:`save`.
+
+        Files written before the ``architecture`` option existed carry no
+        such key and are read as ``"conv"``, which is what they are.
+        """
         import torch
 
         payload = torch.load(path, map_location="cpu", weights_only=True)
-        estimator = cls(patch_size=payload["patch_size"], hidden=payload["hidden"])
+        estimator = cls(
+            patch_size=payload["patch_size"],
+            hidden=payload["hidden"],
+            architecture=payload.get("architecture", "conv"),
+        )
         net = estimator._net()
         net.load_state_dict(payload["state_dict"])
         net.eval()
@@ -257,6 +333,18 @@ def load_default_rangesill_estimator() -> NNRangeSillEstimator:
     ``FinalNetworkSillRangeBothNoNormalization.mat``, cannot be loaded from
     Python and its training data was never archived, so this default is a
     fresh, documented retraining on synthetic data rather than a conversion).
+
+    Trained on 100,000 synthetic fields with every cell of the window used as
+    a scatter point (``n_scatter_points = 33*33 = 1089``), ``architecture=
+    "conv"``, ``hidden=16``, 50 epochs.
+
+    **It is calibrated for that scatter density.** On held-out fields it
+    scores a log-log correlation of 0.996 with essentially no scale bias
+    (median predicted/true range 0.99) when given 1089 points per window, but
+    0.904 with a ~40% over-estimate at ~175 points, and 0.78 with ~2x
+    over-estimate at 40. If your point density differs substantially, train
+    your own estimator at that density
+    (:func:`train_rangesill_estimator`) rather than relying on this one.
 
     Requires the optional ``torch`` dependency: ``pip install "geosigma[nn]"``.
     """
@@ -448,23 +536,31 @@ def _window_scatter_points(
     return xs, ys, values
 
 
+def _points_to_rc(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Normalize a boolean mask or an ``(n, 2)`` index array to ``(rows, cols)``."""
+    points = np.asarray(points)
+    if points.ndim == 2 and points.shape[-1] == 2 and points.dtype != bool:
+        return points[:, 0].astype(int), points[:, 1].astype(int)
+    return np.nonzero(points)
+
+
 def estimate_range_sill_grid(
     surface: np.ndarray,
     points: np.ndarray,
     *,
+    conditioning_points: np.ndarray | None = None,
     estimator: RangeSillEstimator | None = None,
     dx: float = CELL_SIZE,
     minigrid_size: int = MINIGRID_SIZE,
     interp_grid_size: int | None = None,
     interp_method: str = "cubic",
     max_nan_fraction: float = 0.1,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Estimate range and sill at a set of sampled grid locations.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Estimate range, sill and the local mean at sampled grid locations.
 
     For each point: extract its ``minigrid_size`` x ``minigrid_size`` raw
     window (skipping it — leaving NaN — if too much of that window is missing
-    data, ``max_nan_fraction``, matching MATLAB's combined "window was
-    cropped at the surface edge" / "``>=10%`` NaN content" gates); find which
+    data, ``max_nan_fraction``); find which
     of every sampled ``points`` location falls inside that window; mean-centre
     their values and interpolate them onto the regular grid the estimator
     expects (:func:`interpolate_scatter_points`); run the estimator on that
@@ -472,16 +568,43 @@ def estimate_range_sill_grid(
     scattered points themselves (overriding whatever the estimator itself
     returns for sill — see :class:`RangeSillEstimator`'s docstring).
 
+    The per-window mean subtracted along the way is **returned**, not just
+    used internally, because the reference pipeline treats it as a model in
+    its own right: ``get_interpolated_minigrids_parallel.m`` returns
+    ``means`` alongside ``ranges``/``sills``, ``setup_GLOBAL_structure.m``
+    scatters it onto the grid as ``GLOBAL.img_means`` and forms the data to
+    krige as ``GLOBAL.img_dobs = GLOBAL.img_FOHM - GLOBAL.img_means``, and
+    ``Main.m`` adds it back when reconstructing an absolute realization
+    (``real1 = cur_mean1 + cur_m_est1 + cur_real1``). In other words this is
+    the low-frequency/background model the kriged residual is defined
+    against — detrending with anything else (a plane fit, say) is *not* what
+    the reference does.
+
     Parameters
     ----------
     surface : ndarray, shape (ny, nx)
-        The residual/detrended surface to sample from.
+        The surface to sample from. This is the raw boundary surface, not a
+        pre-detrended one — the detrending *is* ``means`` (see above).
     points : ndarray
         Either a boolean mask of shape ``(ny, nx)`` (as returned by
         :func:`~geosigma.inpox.draw_points_inpox`) or an ``(n, 2)`` array of
-        explicit ``(row, col)`` indices. Serves double duty, as in MATLAB:
-        both the locations to estimate *at*, and the pool of conditioning
-        points available to interpolate *from* within any window.
+        explicit ``(row, col)`` indices — the locations to estimate *at*.
+    conditioning_points : ndarray, optional
+        Same format as ``points``: the pool of points available to
+        interpolate *from* within any window. Defaults to ``points`` itself
+        — the original double-duty behaviour, appropriate when there's no
+        real distinction (e.g. synthetic training data, where there's no
+        "true" point density to separate from the estimation locations).
+        Pass a separate, typically much sparser set to match what
+        ``get_interpolated_minigrids_parallel.m`` actually does: its ``mask``
+        argument (``points`` here) is the *entire* valid-domain mask — it
+        estimates at every one of those cells (``parfor i = 1:ct``) — while
+        the drawn points from ``drawpoints.m`` (``conditioning_points`` here)
+        are a separate, sparse set only used to pick which values fall
+        inside any given window. Conflating the two (passing the sparse
+        drawn points as ``points`` too) means only estimating at the sparse
+        locations instead of everywhere — a real gap from the reference,
+        not a stylistic difference.
     estimator : RangeSillEstimator, optional
         Defaults to :func:`load_default_rangesill_estimator`.
     dx : float, default CELL_SIZE
@@ -494,7 +617,13 @@ def estimate_range_sill_grid(
     interp_method : str, default "cubic"
         Passed to :func:`interpolate_scatter_points`.
     max_nan_fraction : float, default 0.1
-        A window with at least this fraction of NaN cells is skipped.
+        A window with at least this fraction of NaN cells is skipped. Note
+        this is a looser gate than MATLAB's: ``get_interpolated_minigrids_
+        parallel.m`` skips a point outright whenever its window is clipped
+        at the surface edge at all (``numel(mini_grid) != GridEls``),
+        regardless of how little was clipped, whereas here an edge-clipped
+        window is treated the same as an interior NaN gap and only skipped
+        once the NaN fraction reaches this threshold.
 
     Returns
     -------
@@ -503,45 +632,179 @@ def estimate_range_sill_grid(
     ranges, sills : ndarray, shape (n,)
         Estimated range and sill at each point (NaN where the point's window
         was skipped or had too few conditioning points to interpolate).
+    means : ndarray, shape (n,)
+        The local mean at each point — the mean of the scattered values
+        inside its window, or of the window's own finite cells when no
+        scattered point falls inside it (matching the two branches that set
+        ``means(i)`` in ``get_interpolated_minigrids_parallel.m``). Unlike
+        ``ranges``/``sills`` this is still filled in for points that fail the
+        ``max_nan_fraction`` gate, again matching the reference, where
+        ``means(i)`` is assigned before the ``test < 0.1`` check.
     """
     if estimator is None:
         estimator = load_default_rangesill_estimator()
     if interp_grid_size is None:
         interp_grid_size = getattr(estimator, "patch_size", minigrid_size - 2)
 
-    points = np.asarray(points)
-    if points.ndim == 2 and points.shape[-1] == 2 and points.dtype != bool:
-        rows, cols = points[:, 0].astype(int), points[:, 1].astype(int)
+    rows, cols = _points_to_rc(points)
+    if conditioning_points is None:
+        points_rc = np.column_stack([rows, cols])
     else:
-        rows, cols = np.nonzero(points)
-    points_rc = np.column_stack([rows, cols])
+        crows, ccols = _points_to_rc(conditioning_points)
+        points_rc = np.column_stack([crows, ccols])
 
     margin = minigrid_size // 2
     half_extent = (margin - 1) * dx
 
     ranges = np.full(len(rows), np.nan)
     sills = np.full(len(rows), np.nan)
+    means = np.full(len(rows), np.nan)
 
     for k in range(len(rows)):
         center = (int(rows[k]), int(cols[k]))
         window = extract_residual_patch(surface, center, minigrid_size)
-        if np.isnan(window).mean() >= max_nan_fraction:
-            continue
-
         xs, ys, values = _window_scatter_points(surface, points_rc, center, margin, dx)
-        if values.size == 0:
+
+        # Assigned before the NaN gate below, as in the reference.
+        if values.size:
+            means[k] = float(np.mean(values))
+        else:
+            finite = window[np.isfinite(window)]
+            if finite.size:
+                means[k] = float(finite.mean())
+
+        if np.isnan(window).mean() >= max_nan_fraction or values.size == 0:
             continue
 
-        depths = values - values.mean()
+        depths = values - means[k]
         sills[k] = float(np.var(depths))
 
         grid = interpolate_scatter_points(
             xs, ys, depths, half_extent, interp_grid_size, method=interp_method
         )
         range_pred, _ = estimator.predict(grid)
-        ranges[k] = range_pred
+        # Matches MATLAB's `ranges(ranges<0) = 100;` tail clamp. Unreachable
+        # for the shipped estimator (its output is exp(.), strictly
+        # positive), but a user-supplied RangeSillEstimator isn't guaranteed
+        # to be.
+        ranges[k] = range_pred if range_pred >= 0 else 100.0
 
-    return rows, cols, ranges, sills
+    return rows, cols, ranges, sills, means
+
+
+@dataclass
+class RangeSillSurface:
+    """Dense, grid-shaped output of :func:`estimate_range_sill_surface`.
+
+    Every field has the same ``(ny, nx)`` shape as the surface it came from.
+
+    Attributes
+    ----------
+    range_field, sill_field : ndarray
+        Estimated variogram range (metres) and sill at every cell. NaN only
+        where a cell's window was skipped (see ``max_nan_fraction``).
+    lf_mean : ndarray
+        The low-frequency background model: each cell's local window mean
+        (``GLOBAL.img_means``).
+    residual : ndarray
+        ``surface - lf_mean`` — the data local kriging actually conditions
+        on (``GLOBAL.img_dobs = GLOBAL.img_FOHM - GLOBAL.img_means``,
+        setup_GLOBAL_structure.m:75). Add ``lf_mean`` back to return a
+        kriged result or a realization to absolute values.
+    """
+
+    range_field: np.ndarray
+    sill_field: np.ndarray
+    lf_mean: np.ndarray
+    residual: np.ndarray
+
+
+def estimate_range_sill_surface(
+    surface: np.ndarray,
+    conditioning_points: np.ndarray,
+    *,
+    estimator: RangeSillEstimator | None = None,
+    dx: float = CELL_SIZE,
+    minigrid_size: int = MINIGRID_SIZE,
+    interp_grid_size: int | None = None,
+    interp_method: str = "cubic",
+    max_nan_fraction: float = 0.1,
+) -> RangeSillSurface:
+    """Estimate range, sill and the LF mean at **every cell** of a surface.
+
+    The grid-in/grid-out form of :func:`estimate_range_sill_grid`, and the
+    one a pipeline normally wants: it estimates everywhere (as
+    ``get_interpolated_minigrids_parallel.m`` does — its ``mask`` argument is
+    the whole valid-domain mask) using ``conditioning_points`` only to decide
+    which values fall inside each window, and returns grid-shaped fields plus
+    the residual rather than flat per-point arrays.
+
+    It also handles the bookkeeping that is easy to get wrong by hand:
+
+    * **Edge windows.** The surface is reflection-padded by half a window
+      first, so cells near the boundary still get a full, uncropped window
+      instead of being skipped for having too much missing data. Without
+      this, a ``minigrid_size`` of 33 silently drops a ~16-cell border —
+      more than half the cells of a 100x100 grid.
+    * **Coordinate translation** back from padded to original indices, and
+      scattering the flat results onto the grid.
+
+    Parameters
+    ----------
+    surface : ndarray, shape (ny, nx)
+        The raw boundary surface. Not pre-detrended — the detrending *is*
+        :attr:`RangeSillSurface.lf_mean`.
+    conditioning_points : ndarray
+        Boolean mask (``(ny, nx)``) or ``(n, 2)`` row/col indices of the
+        scattered data points, e.g. from
+        :func:`~geosigma.inpox.draw_points_inpox`.
+
+    Other parameters are passed straight through to
+    :func:`estimate_range_sill_grid`.
+
+    Returns
+    -------
+    RangeSillSurface
+    """
+    surface = np.asarray(surface, dtype=float)
+    ny, nx = surface.shape
+
+    margin = minigrid_size // 2
+    surface_padded = np.pad(surface, margin, mode="reflect")
+
+    cond_rows, cond_cols = _points_to_rc(conditioning_points)
+    conditioning_padded = np.zeros(surface_padded.shape, dtype=bool)
+    conditioning_padded[cond_rows + margin, cond_cols + margin] = True
+
+    estimate_padded = np.zeros(surface_padded.shape, dtype=bool)
+    estimate_padded[margin : margin + ny, margin : margin + nx] = True
+
+    rows_p, cols_p, ranges, sills, means = estimate_range_sill_grid(
+        surface_padded,
+        estimate_padded,
+        conditioning_points=conditioning_padded,
+        estimator=estimator,
+        dx=dx,
+        minigrid_size=minigrid_size,
+        interp_grid_size=interp_grid_size,
+        interp_method=interp_method,
+        max_nan_fraction=max_nan_fraction,
+    )
+    rows, cols = rows_p - margin, cols_p - margin
+
+    range_field = np.full((ny, nx), np.nan)
+    sill_field = np.full((ny, nx), np.nan)
+    lf_mean = np.full((ny, nx), np.nan)
+    range_field[rows, cols] = ranges
+    sill_field[rows, cols] = sills
+    lf_mean[rows, cols] = means
+
+    return RangeSillSurface(
+        range_field=range_field,
+        sill_field=sill_field,
+        lf_mean=lf_mean,
+        residual=surface - lf_mean,
+    )
 
 
 def build_range_cholesky_lookup(
@@ -835,6 +1098,7 @@ def train_rangesill_estimator(
     range_bounds: tuple[float, float] = (50.0, 2000.0),
     sill_bounds: tuple[float, float] = (1.0, 50.0),
     hidden: int = 16,
+    architecture: str = "conv",
     epochs: int = 200,
     lr: float = 1e-3,
     batch_size: int = 32,
@@ -859,6 +1123,11 @@ def train_rangesill_estimator(
         again. When ``None`` (default), a fresh set is generated via
         :func:`generate_training_data` using the keywords below — this keeps
         the common case a single call, as before.
+    architecture : {"conv", "dense"}, default "conv"
+        Which network to train — see :class:`NNRangeSillEstimator` for what
+        each is and why ``"conv"`` is the default (it measured better on an
+        identical training set while using far fewer parameters, and unlike
+        ``"dense"`` it is not tied to one ``patch_size``).
     loss_space : {"log", "linear"}, default "log"
         Whether the training loss is MSE on the network's raw output (the
         log range — ``"log"``, the original behaviour) or MSE on
@@ -911,7 +1180,7 @@ def train_rangesill_estimator(
     X = torch.as_tensor(patches, dtype=torch.float32).unsqueeze(1)
     y = torch.as_tensor(log_ranges, dtype=torch.float32)
 
-    net = _build_net(hidden)
+    net = _build_net(hidden, architecture, patch_size=training_data.interp_grid_size)
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
     loss_label = "mse(log range)" if loss_space == "log" else "mse(range)"
@@ -935,7 +1204,9 @@ def train_rangesill_estimator(
 
     net.eval()
     estimator = NNRangeSillEstimator(
-        patch_size=training_data.interp_grid_size, hidden=hidden
+        patch_size=training_data.interp_grid_size,
+        hidden=hidden,
+        architecture=architecture,
     )
     estimator._model = net
     return estimator

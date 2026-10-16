@@ -28,8 +28,10 @@ from geosigma.preprocess.rangesill import (
     DEFAULT_PATCH_SIZE,
     MINIGRID_SIZE,
     NNRangeSillEstimator,
+    _build_net,
     build_range_cholesky_lookup,
     estimate_range_sill_grid,
+    estimate_range_sill_surface,
     extract_residual_patch,
     generate_training_data,
     interpolate_scatter_points,
@@ -150,10 +152,11 @@ def test_estimate_range_sill_grid_boolean_mask_and_sill_from_scatter_variance():
     points[10, 10] = True
     points[10, 12] = True
 
-    rows, cols, ranges, sills = estimate_range_sill_grid(
+    rows, cols, ranges, sills, means = estimate_range_sill_grid(
         surface, points, estimator=_ConstantEstimator(), dx=1.0, minigrid_size=5
     )
     assert set(zip(rows.tolist(), cols.tolist())) == {(10, 10), (10, 12)}
+    np.testing.assert_allclose(means, [0.0, 0.0])  # flat surface -> zero local mean
     np.testing.assert_allclose(ranges, [123.0, 123.0])
     # surface is uniformly zero, so the scattered points' variance is exactly
     # 0 regardless of _ConstantEstimator's own (unused) sill return of 4.0.
@@ -163,7 +166,7 @@ def test_estimate_range_sill_grid_boolean_mask_and_sill_from_scatter_variance():
 def test_estimate_range_sill_grid_index_array():
     surface = np.zeros((20, 20))
     points = np.array([[5, 5], [10, 10], [15, 15]])
-    rows, cols, ranges, sills = estimate_range_sill_grid(
+    rows, cols, ranges, sills, _means = estimate_range_sill_grid(
         surface, points, estimator=_ConstantEstimator(), dx=1.0, minigrid_size=5
     )
     np.testing.assert_array_equal(rows, [5, 10, 15])
@@ -175,10 +178,13 @@ def test_estimate_range_sill_grid_skips_edge_clipped_windows():
     surface = np.zeros((10, 10))
     points = np.zeros((10, 10), dtype=bool)
     points[0, 0] = True  # minigrid_size=7 would reach well outside the surface
-    rows, cols, ranges, sills = estimate_range_sill_grid(
+    rows, cols, ranges, sills, means = estimate_range_sill_grid(
         surface, points, estimator=_ConstantEstimator(), dx=1.0, minigrid_size=7
     )
     assert np.isnan(ranges[0]) and np.isnan(sills[0])
+    # ...but the local mean is still assigned, as in MATLAB (means(i) is set
+    # before the `test < 0.1` gate, and in the clipped-window branch too).
+    assert np.isfinite(means[0])
 
 
 def test_estimate_range_sill_grid_uses_scattered_values_not_dense_window():
@@ -190,10 +196,170 @@ def test_estimate_range_sill_grid_uses_scattered_values_not_dense_window():
     points[10, 10] = True
     points[10, 11] = True
 
-    _, _, _, sills = estimate_range_sill_grid(
+    _, _, _, sills, _ = estimate_range_sill_grid(
         surface, points, estimator=_ConstantEstimator(), dx=1.0, minigrid_size=5
     )
     np.testing.assert_allclose(sills, [0.0, 0.0])
+
+
+def test_estimate_range_sill_grid_separate_conditioning_points():
+    # Estimate densely (every cell), conditioned on a separate, sparse set --
+    # matching get_interpolated_minigrids_parallel.m's mask/drawpoints split,
+    # not the points-serve-double-duty default.
+    surface = np.zeros((20, 20))
+    estimate_at = np.ones((20, 20), dtype=bool)  # every cell
+    conditioning = np.zeros((20, 20), dtype=bool)
+    conditioning[10, 10] = True
+    conditioning[10, 12] = True  # sparse: just 2 real data points anywhere
+
+    rows, cols, ranges, sills, means = estimate_range_sill_grid(
+        surface,
+        estimate_at,
+        conditioning_points=conditioning,
+        estimator=_ConstantEstimator(),
+        dx=1.0,
+        minigrid_size=5,
+    )
+    # Estimated at every one of the 400 cells, not just the 2 conditioning ones.
+    assert len(rows) == 400
+    # A cell far from both conditioning points has no data in its window at
+    # all, so its sill/range stay NaN (but its mean still comes from the
+    # window's own finite cells, same as a MATLAB clipped-window point).
+    far_idx = np.flatnonzero((rows == 0) & (cols == 0))[0]
+    assert np.isnan(sills[far_idx]) and np.isnan(ranges[far_idx])
+    assert np.isfinite(means[far_idx])
+    # A cell at a conditioning point's own location picks up both points
+    # (both are within a 5-cell window of (10,10) and (10,12)).
+    near_idx = np.flatnonzero((rows == 10) & (cols == 10))[0]
+    assert np.isfinite(sills[near_idx])
+
+
+# --------------------------------------------------------------------------- #
+# architecture: "conv" (default) vs "dense"
+# --------------------------------------------------------------------------- #
+def test_train_accepts_both_architectures_and_records_the_choice():
+    data = generate_training_data(40, minigrid_size=11, n_scatter_points=25, seed=0)
+    patch = np.random.default_rng(0).normal(size=(data.interp_grid_size,) * 2)
+    for arch in ("conv", "dense"):
+        est = train_rangesill_estimator(
+            data, hidden=4, architecture=arch, epochs=1, seed=0
+        )
+        assert est.architecture == arch
+        range_, sill = est.predict(patch)
+        # predict() exponentiates the net's log-range output, so any trained
+        # network gives a strictly positive range and a finite sample sill.
+        assert np.isfinite(range_) and range_ > 0
+        assert np.isfinite(sill) and sill > 0
+
+
+def test_architecture_round_trips_through_save_load(tmp_path):
+    data = generate_training_data(40, minigrid_size=11, n_scatter_points=25, seed=0)
+    rng = np.random.default_rng(1)
+    patch = rng.normal(size=(data.interp_grid_size,) * 2)
+
+    for arch in ("conv", "dense"):
+        est = train_rangesill_estimator(
+            data, hidden=4, architecture=arch, epochs=1, seed=0
+        )
+        path = tmp_path / f"{arch}.pt"
+        est.save(path)
+        back = NNRangeSillEstimator.load(path)
+        assert back.architecture == arch
+        np.testing.assert_allclose(back.predict(patch), est.predict(patch))
+
+
+def test_load_defaults_to_conv_for_files_written_before_the_option_existed(tmp_path):
+    import torch
+
+    est = NNRangeSillEstimator(patch_size=9, hidden=4)
+    path = tmp_path / "legacy.pt"
+    # Exactly the payload save() used to write -- no "architecture" key.
+    torch.save(
+        {
+            "state_dict": est._net().state_dict(),
+            "patch_size": est.patch_size,
+            "hidden": est.hidden,
+        },
+        path,
+    )
+    assert NNRangeSillEstimator.load(path).architecture == "conv"
+
+
+def test_rejects_unknown_architecture():
+    with pytest.raises(ValueError, match="architecture"):
+        NNRangeSillEstimator(architecture="mlp")
+
+
+def test_conv_is_patch_size_agnostic_but_dense_is_not():
+    # The conv net's AdaptiveAvgPool2d gives fixed-size features for any input,
+    # so the same weights accept a different patch size; the dense net's first
+    # layer width is structural and cannot.
+    conv = _build_net(4, "conv", patch_size=9)
+    dense = _build_net(4, "dense", patch_size=9)
+    x = torch.zeros(1, 1, 15, 15)  # not 9x9
+    conv(x)  # must not raise
+    with pytest.raises(RuntimeError):
+        dense(x)
+
+
+# --------------------------------------------------------------------------- #
+# estimate_range_sill_surface: the dense, grid-in/grid-out wrapper
+# --------------------------------------------------------------------------- #
+def test_estimate_range_sill_surface_is_dense_and_grid_shaped():
+    rng = np.random.default_rng(0)
+    surface = rng.normal(size=(20, 20))
+    points = np.zeros((20, 20), dtype=bool)
+    points[::3, ::3] = True
+
+    rs = estimate_range_sill_surface(
+        surface, points, estimator=_ConstantEstimator(), dx=1.0, minigrid_size=5
+    )
+
+    for field in (rs.range_field, rs.sill_field, rs.lf_mean, rs.residual):
+        assert field.shape == surface.shape
+    # Dense: estimated everywhere, including the border cells a naive
+    # (unpadded) call would drop for having too much missing window.
+    assert np.isfinite(rs.range_field).all()
+    assert np.isfinite(rs.lf_mean).all()
+    np.testing.assert_allclose(rs.residual, surface - rs.lf_mean)
+
+
+def test_estimate_range_sill_surface_matches_manual_padded_call():
+    # The wrapper is exactly the padded/dense/reshaped form of the lower-level
+    # function -- pin that, so the two can't silently drift apart.
+    rng = np.random.default_rng(1)
+    surface = rng.normal(size=(18, 18))
+    points = np.zeros((18, 18), dtype=bool)
+    points[::4, ::2] = True
+    minigrid = 5
+
+    rs = estimate_range_sill_surface(
+        surface, points, estimator=_ConstantEstimator(), dx=1.0, minigrid_size=minigrid
+    )
+
+    margin = minigrid // 2
+    ny, nx = surface.shape
+    surf_pad = np.pad(surface, margin, mode="reflect")
+    cond_pad = np.zeros(surf_pad.shape, dtype=bool)
+    cond_pad[margin : margin + ny, margin : margin + nx] = points
+    est_pad = np.zeros(surf_pad.shape, dtype=bool)
+    est_pad[margin : margin + ny, margin : margin + nx] = True
+
+    r, c, ranges, sills, means = estimate_range_sill_grid(
+        surf_pad,
+        est_pad,
+        conditioning_points=cond_pad,
+        estimator=_ConstantEstimator(),
+        dx=1.0,
+        minigrid_size=minigrid,
+    )
+    expected = np.full((ny, nx), np.nan)
+    expected[r - margin, c - margin] = ranges
+    np.testing.assert_array_equal(rs.range_field, expected)
+
+    expected_mean = np.full((ny, nx), np.nan)
+    expected_mean[r - margin, c - margin] = means
+    np.testing.assert_array_equal(rs.lf_mean, expected_mean)
 
 
 # --------------------------------------------------------------------------- #
@@ -207,7 +373,7 @@ def _predict_center(estimator, field, dx, n_scatter_points=20, seed=0):
     mask = np.zeros(field.shape, dtype=bool)
     mask[rows, cols] = True
     mask[center] = True
-    out_rows, out_cols, ranges, sills = estimate_range_sill_grid(
+    out_rows, out_cols, ranges, sills, _means = estimate_range_sill_grid(
         field, mask, estimator=estimator, dx=dx, minigrid_size=ny
     )
     idx = np.flatnonzero((out_rows == center[0]) & (out_cols == center[1]))[0]

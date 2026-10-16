@@ -33,8 +33,9 @@ Steps:
 Generating training data and training the network on it are deliberately
 separate steps (geosigma.preprocess.rangesill.generate_training_data vs.
 train_rangesill_estimator(training_data=...)): once you have a cached
-dataset you're happy with, you can iterate on network size/epochs/learning
-rate as many times as you like without regenerating it.
+dataset you're happy with, you can iterate on architecture ("conv" vs
+"dense", see ARCHITECTURE below), network size, epochs and learning rate as
+many times as you like without regenerating it.
 
 Requires the optional ``torch`` and ``scipy`` dependencies:
 ``pip install "geosigma[nn]"``.
@@ -70,16 +71,26 @@ SILL_BOUNDS = (1.0, 50.0)
 # interpolation. There is no single MATLAB-equivalent value for this -- real
 # point density is data-dependent, not a pipeline constant -- so it's a free
 # parameter here; 40 is a reasonable illustrative default.
-N_SCATTER_POINTS = 218
+N_SCATTER_POINTS = 360
 
 # The training dataset size: how many synthetic fields train_rangesill_estimator
 # draws for this run. N_TRAIN_SAMPLES/N_TRAIN_EPOCHS below are small enough to
 # run in well under a minute on a laptop CPU -- this is a fast illustrative
 # run, not a reproduction of the shipped default's actual training recipe.
-# The shipped default was trained on 1,000,000 samples (hidden=16, 50 epochs;
-# ~87 minutes), so expect this quick run to score noticeably lower than the
-# "shipped default" comparison in step 6 below -- that gap is the cost of
-# this example staying fast, not a bug. See docs/deferred_decisions.md-style
+# The shipped default was trained on 100,000 samples with every grid cell used
+# as a scatter point (n_scatter_points = 33*33 = 1089), conv architecture,
+# hidden=16, 50 epochs, seed=1 -- ~70 min to generate the data plus ~6 min to
+# train. So expect this quick run to score noticeably lower than the "shipped
+# default" comparison in step 6 below -- that gap is the cost of this example
+# staying fast, not a bug.
+#
+# Note the default's training density (1089 points per window) is far denser
+# than a realistic point set, and the network is accurate at the density it
+# was trained on: on held-out synthetic fields it scores a log-log
+# correlation of 0.996 with essentially no scale bias (median predicted/true
+# = 0.99) at 1089 points, but 0.904 and +40% bias at ~175 points. Match
+# N_SCATTER_POINTS to your own data when training your own estimator.
+# See docs/deferred_decisions.md-style
 # reasoning in geosigma/preprocess/rangesill.py's module docstring for why
 # torch+scipy are optional extras rather than core dependencies.
 N_TRAIN_SAMPLES = 1000
@@ -96,6 +107,25 @@ TRAINING_DATA_CACHE = os.path.join(
     os.path.dirname(__file__), "data", "rangesill_nn", "training_data.npz"
 )
 N_TRAIN_EPOCHS = 50
+
+# Which network to train: "conv" (two small convolution layers + a linear
+# head) or "dense" (a plain fully-connected net on the flattened grid).
+# "conv" is what the shipped default uses. On an identical 100,000-sample set
+# with identical hyperparameters and the same held-out fields, the two scored:
+#
+#     conv  (5,377 params)    log-log corr 0.767
+#     dense (15,409 params)   log-log corr 0.653
+#     dense (61,633 params)   log-log corr 0.630
+#     dense (131,457 params)  log-log corr 0.723
+#
+# i.e. conv generalizes better while using 3-24x *fewer* parameters, so the
+# gap is about inductive bias (convolution encodes "spatial covariance
+# matters, absolute position doesn't", which is what a correlation length
+# is), not capacity -- the dense nets fit the training data better as they
+# grow and still don't catch up. "conv" also accepts any patch size, while
+# "dense" fixes its input width at build time. Flip this to compare yourself.
+ARCHITECTURE = "conv"
+# ARCHITECTURE = "dense"
 
 
 def evaluate_field(
@@ -115,7 +145,7 @@ def evaluate_field(
     mask[rows, cols] = True
     mask[center] = True
 
-    out_rows, out_cols, ranges, sills = estimate_range_sill_grid(
+    out_rows, out_cols, ranges, sills, _means = estimate_range_sill_grid(
         field, mask, estimator=estimator, dx=dx, minigrid_size=ny
     )
     idx = np.flatnonzero((out_rows == center[0]) & (out_cols == center[1]))[0]
@@ -307,10 +337,12 @@ else:
 estimator = train_rangesill_estimator(
     training_data,
     hidden=16,
+    architecture=ARCHITECTURE,
     epochs=N_TRAIN_EPOCHS,
     seed=1,
     verbose=True,
 )
+print(f"trained a {ARCHITECTURE!r} network on {training_data.patches.shape[0]} samples")
 
 
 # %% -------------------------------------------------
