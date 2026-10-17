@@ -194,9 +194,7 @@ def run_layer(layer_surface, label, seed):
     # rest so every cell belongs to a zone (build_windows would otherwise
     # leave most of the grid unkriged -- som_cluster_grid deliberately labels
     # only what it's given).
-    cluster_grid, stats = build_kriging_zones(
-        rs.range_field, rs.sill_field, seed=seed
-    )
+    cluster_grid, stats = build_kriging_zones(rs.range_field, rs.sill_field, seed=seed)
     print(
         f"[{label}] SOM formed {int(cluster_grid.max())} kriging zones, "
         f"filled to full coverage"
@@ -711,18 +709,24 @@ sec_bot = model.surfaces[SLICE_ROW, :, 1, :N_SECTIONS]
 pad = 0.08 * (sec_top.max() - sec_bot.min())
 y_hi, y_lo = sec_top.max() + pad, sec_bot.min() - pad
 
-fig6, axes6 = plt.subplots(
-    N_SECTIONS, 1, figsize=(12, 11), sharex=True, sharey=True
-)
+fig6, axes6 = plt.subplots(N_SECTIONS, 1, figsize=(12, 11), sharex=True, sharey=True)
 for k, ax in enumerate(axes6):
     top, bot = sec_top[:, k], sec_bot[:, k]
 
-    ax.fill_between(x_slice, top, y_hi, color=UNIT_ABOVE, alpha=FILL_ALPHA,
-                    label="Above layer 1")
-    ax.fill_between(x_slice, bot, top, color=UNIT_MIDDLE, alpha=FILL_ALPHA,
-                    label="Between the layers")
-    ax.fill_between(x_slice, y_lo, bot, color=UNIT_BELOW, alpha=FILL_ALPHA,
-                    label="Below layer 2")
+    ax.fill_between(
+        x_slice, top, y_hi, color=UNIT_ABOVE, alpha=FILL_ALPHA, label="Above layer 1"
+    )
+    ax.fill_between(
+        x_slice,
+        bot,
+        top,
+        color=UNIT_MIDDLE,
+        alpha=FILL_ALPHA,
+        label="Between the layers",
+    )
+    ax.fill_between(
+        x_slice, y_lo, bot, color=UNIT_BELOW, alpha=FILL_ALPHA, label="Below layer 2"
+    )
 
     for boundary in (top, bot):
         ax.plot(x_slice, boundary, color="white", linewidth=3.2, zorder=3)
@@ -735,7 +739,8 @@ for k, ax in enumerate(axes6):
     ax.text(
         0.012,
         0.9,
-        f"Realization {k + 1}" + (f" -- {pinched} cells pinched out" if pinched else ""),
+        f"Realization {k + 1}"
+        + (f" -- {pinched} cells pinched out" if pinched else ""),
         transform=ax.transAxes,
         fontsize=9,
         va="top",

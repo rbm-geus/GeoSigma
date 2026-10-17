@@ -16,13 +16,17 @@ from geosigma.config import RegionConfig
 from utils import load_geotiff_grid, grids_aligned
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG = REPO_ROOT / "examples" / "data" / "Jutland_hydrostrat_model" / "region_config.json"
+CONFIG = (
+    REPO_ROOT / "examples" / "data" / "Jutland_hydrostrat_model" / "region_config.json"
+)
 
 
 def main() -> None:
     cfg = RegionConfig.from_file(CONFIG)
     print(f"Region: {cfg.name}")
-    print(f"{cfg.n_interfaces} interfaces, {cfg.n_modelled_layers} modelled boundaries\n")
+    print(
+        f"{cfg.n_interfaces} interfaces, {cfg.n_modelled_layers} modelled boundaries\n"
+    )
 
     # Reference grid = the terrain/top surface.
     _, ref_meta = load_geotiff_grid(str(cfg.surface_path(0)))

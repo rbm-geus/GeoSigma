@@ -52,7 +52,9 @@ def test_handover_at_B_is_continuous():
     # of f1's tanh not being fully saturated at B.
     B = T4["B"] * T4["L0"]
     jump = abs(ftot(B + 1e-9) - ftot(B - 1e-9))
-    expected = T4["C"] * P0 * (1 - np.tanh((T4["B"] - T4["A"]) * T4["L0"] * T4["g"])) / 2
+    expected = (
+        T4["C"] * P0 * (1 - np.tanh((T4["B"] - T4["A"]) * T4["L0"] * T4["g"])) / 2
+    )
     assert jump < 2 * expected
 
 

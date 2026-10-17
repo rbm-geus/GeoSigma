@@ -5,7 +5,7 @@ Created on Thu May 21 11:18:10 2026
 @author: RBM, GEUS
 """
 
-#%%
+# %%
 
 import os
 import glob
@@ -14,7 +14,6 @@ import numpy as np
 
 # Project imports
 from utils import load_geotiff_grid, grid_coordinates_from_esri_meta
-
 
 # ============================================================
 # Load all GeoTIFF surfaces
@@ -45,15 +44,16 @@ for fname in tif_files:
     # Mean elevation (used for sorting)
     z_mean = np.nanmean(z)
 
-    surfaces.append({
-        "name": os.path.basename(fname),
-        "z": z,
-        "meta": meta,
-        "mean": z_mean,
-    })
+    surfaces.append(
+        {
+            "name": os.path.basename(fname),
+            "z": z,
+            "meta": meta,
+            "mean": z_mean,
+        }
+    )
 
-    print(f"Loaded: {os.path.basename(fname)} "
-          f"(mean elevation = {z_mean:.2f} m)")
+    print(f"Loaded: {os.path.basename(fname)} " f"(mean elevation = {z_mean:.2f} m)")
 
 
 # ============================================================
@@ -71,9 +71,7 @@ for s in surfaces:
 # Coordinates from first surface
 # ============================================================
 
-x, y, xx, yy = grid_coordinates_from_esri_meta(
-    surfaces[0]["meta"]
-)
+x, y, xx, yy = grid_coordinates_from_esri_meta(surfaces[0]["meta"])
 
 extent = [x.min(), x.max(), y.min(), y.max()]
 

@@ -1,12 +1,13 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from utils import load_geotiff_grid, grid_coordinates_from_esri_meta
-from geosigma import draw_points_inpox, ftot_laplace,visualize_transfer_function
+from geosigma import draw_points_inpox, visualize_transfer_function
 
 # ============================================================
 # --- Load surface ---
 z, meta = load_geotiff_grid("examples/data/Jutland_hydrostrat_model/top_surface.tif")
-#z, meta = load_geotiff_grid("examples/data/Jutland_hydrostrat_model/layer_4_bottom.tif")
+# Swap for a deeper boundary:
+# "examples/data/Jutland_hydrostrat_model/layer_4_bottom.tif"
 x, y, xx, yy = grid_coordinates_from_esri_meta(meta)
 
 # --- INPOX Parameters ---
@@ -31,7 +32,6 @@ ext_vals = {
 visualize_transfer_function(z, ext_vals, lap_max=10)
 
 
-
 # ============================================================
 # --- Run INPOX sampling ---
 # ============================================================
@@ -49,8 +49,6 @@ actual_draw_percent = 100 * np.sum(points) / points.size
 print(f"Actual draw percentage: {actual_draw_percent:.2f} %")
 
 
-
-
 # ============================================================
 # Figure 2: Spatial results (2x2)
 # ============================================================
@@ -62,17 +60,17 @@ axes[0, 0].set_title("Original surface")
 fig.colorbar(im0, ax=axes[0, 0])
 
 # --- Laplacian ---
-im1 = axes[0, 1].imshow(lapl,vmin=0,vmax=10)
+im1 = axes[0, 1].imshow(lapl, vmin=0, vmax=10)
 axes[0, 1].set_title("Laplacian")
 fig.colorbar(im1, ax=axes[0, 1])
 
 # --- Probability added map ---
-im2 = axes[0, 2].imshow(plap_extra,vmin=0,vmax=1)
+im2 = axes[0, 2].imshow(plap_extra, vmin=0, vmax=1)
 axes[0, 2].set_title("Probability change to base draw")
 fig.colorbar(im2, ax=axes[0, 2])
 
 # --- Probability map final ---
-im3 = axes[1, 0].imshow(plap,vmin=0,vmax=1)
+im3 = axes[1, 0].imshow(plap, vmin=0, vmax=1)
 axes[1, 0].set_title("Final probability normalized")
 fig.colorbar(im3, ax=axes[1, 0])
 
@@ -82,17 +80,15 @@ axes[1, 1].set_title(f"Sampled points ({actual_draw_percent:.2f}%)")
 fig.colorbar(im4, ax=axes[1, 1])
 
 # Repeated point draw
-Nrep = 50;
+Nrep = 50
 points_rep = np.zeros(np.shape(points))
 for i in range(Nrep):
-    points_i = draw_points_inpox(
-        z, ext_vals, dx=meta["cellsize"], dy=meta["cellsize"]
-    )
+    points_i = draw_points_inpox(z, ext_vals, dx=meta["cellsize"], dy=meta["cellsize"])
     points_rep += points_i
 
 
 # --- Sampled points ---
-im4 = axes[1, 2].imshow(points_rep,vmin=0,vmax=Nrep)
+im4 = axes[1, 2].imshow(points_rep, vmin=0, vmax=Nrep)
 axes[1, 2].set_title(f"Number of draws in {Nrep:.0f} extractions")
 fig.colorbar(im4, ax=axes[1, 2])
 

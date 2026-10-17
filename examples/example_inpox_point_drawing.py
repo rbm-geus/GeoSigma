@@ -178,9 +178,10 @@ for P0 in P0_VALUES:
         pts, det = inpox(P0, C)
         probabilities[(P0, C)] = det["probability"]
         point_masks[(P0, C)] = pts
+        p = det["probability"]
         print(
             f"P0={P0:.2f}  C={C:<4g} ->  "
-            f"probability {det['probability'].min():.3f}-{det['probability'].max():.3f}, "
+            f"probability {p.min():.3f}-{p.max():.3f}, "
             f"drew {int(pts.sum()):5d} points ({pts.mean():.3f} of cells)"
         )
 
