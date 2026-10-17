@@ -26,6 +26,14 @@ Steps:
    simulation) -- not the raw geosigma.core primitives directly, unlike
    demo_synthetic_kriging_inversion.py -- then add the LF mean back to get
    absolute surfaces again.
+6. Stack the layers (geosigma.assembly), clamping any boundary that was
+   drawn above the one above it, realization by realization.
+
+Steps 2-5 run once per modelled boundary and know nothing about each other:
+that independence is what makes each boundary's uncertainty honest, and
+also what lets two boundaries cross. Step 6 is where that is resolved. The
+demo models two boundaries -- the real cutout, and the same cutout
+``LAYER_THICK`` metres lower, treated as a fully independent layer.
 
 No real geophysical uncertainty data is bundled with this repo (see
 matlab_reference/README.md's note on data files not being included), so the
@@ -39,10 +47,13 @@ Requires the optional ``torch``/``scipy`` extras for the NN estimator:
 ``pip install "geosigma[nn]"``.
 """
 
+from dataclasses import dataclass
+
 import numpy as np
 import matplotlib.pyplot as plt
 
 from utils import load_geotiff_grid
+from geosigma.assembly import stack_realizations
 from geosigma.inpox import draw_points_inpox
 from geosigma.preprocess.rangesill import (
     load_default_rangesill_estimator,
@@ -92,9 +103,16 @@ print(
     f"elevation range [{surface.min():.1f}, {surface.max():.1f}] m"
 )
 
-# %% -------------------------------------------------
-# 2. Draw conditioning points with INPOX
-# -------------------------------------------------
+# The ensemble is far larger than what gets plotted, because the ensemble
+# *mean* in figure 2 is only meaningful with enough draws behind it: the
+# standard error of a mean over N draws is sigma/sqrt(N), so 7 would leave
+# ~38% of the posterior std as visible noise where 200 leaves ~7%. It is
+# nearly free to ask for: each window's Cholesky factor is computed once and
+# then reused for every draw, so the cost of going from 8 to 200 is a wider
+# matrix multiply, not 25x the work.
+N_REALS = 200
+N_PLOT = 7  # how many individual realizations the figures show
+
 # Madsen et al. (2024) Table 1, real-world case (T4), tuned on a FOHM surface
 # -- the same model this cutout comes from. P0 is a *floor*, not the draw
 # fraction: roughness only ever adds to it, so the realised fraction lands
@@ -109,91 +127,147 @@ ext_vals = {
     "E": 0.8,
     "g": 2.0,
 }
-points_mask = draw_points_inpox(surface, ext_vals, dx=dx, dy=dx)
-print(f"INPOX drew {int(points_mask.sum())} points out of {points_mask.size} cells")
 
-# %% -------------------------------------------------
-# 3. Range/sill + the LF mean model (NN inference, not training)
-# -------------------------------------------------
-# One call covers what the reference does in
-# get_interpolated_minigrids_parallel.m: estimate at every cell (its `mask`
-# argument is the whole valid-domain mask) using the sparse INPOX points
-# only to decide which values fall inside each window, and return the local
-# window means as the LF background model plus the residual to krige. It
-# also reflection-pads internally so edge cells still get a full window.
+
+@dataclass
+class LayerRun:
+    """Everything steps 2-5 produce for one modelled boundary."""
+
+    label: str
+    surface: np.ndarray
+    points_mask: np.ndarray
+    rs: object  # RangeSillSurface
+    cluster_grid: np.ndarray
+    stats: dict
+    result: object  # LayerRealizations
+    kriged_surface: np.ndarray
+    abs_reals: np.ndarray
+
+
+def run_layer(layer_surface, label, seed):
+    """Steps 2-5 for one boundary, start to finish and independent of others.
+
+    Every layer gets its own INPOX draw, its own range/sill estimates, its
+    own kriging zones and its own realizations -- which is what makes each
+    boundary's uncertainty honest, and also what lets them cross. Step 6
+    deals with that.
+    """
+    # Seeded here rather than per call site, so the INPOX draw and the SOM
+    # differ between layers too. Sharing a seed would hand both layers the
+    # same conditioning points -- the two surfaces differ by a constant, so
+    # their Laplacians, and hence their draw probabilities, are identical.
+    np.random.seed(seed)
+
+    # --- 2. Conditioning points (INPOX) ---
+    points_mask = draw_points_inpox(layer_surface, ext_vals, dx=dx, dy=dx)
+    print(
+        f"[{label}] INPOX drew {int(points_mask.sum())} points "
+        f"out of {points_mask.size} cells"
+    )
+
+    # --- 3. Range/sill + the LF mean model (NN inference, not training) ---
+    # One call covers what the reference does in
+    # get_interpolated_minigrids_parallel.m: estimate at every cell (its
+    # `mask` argument is the whole valid-domain mask) using the sparse INPOX
+    # points only to decide which values fall inside each window, and return
+    # the local window means as the LF background model plus the residual to
+    # krige. It also reflection-pads internally so edge cells still get a
+    # full window.
+    rs = estimate_range_sill_surface(
+        layer_surface, points_mask, estimator=estimator, dx=dx
+    )
+    n_valid = int((np.isfinite(rs.range_field) & np.isfinite(rs.sill_field)).sum())
+    print(
+        f"[{label}] range/sill at {n_valid}/{rs.range_field.size} cells, "
+        f"median range={np.nanmedian(rs.range_field):.0f} m, "
+        f"median sill={np.nanmedian(rs.sill_field):.1f}"
+    )
+    print(
+        f"[{label}] LF mean [{rs.lf_mean.min():.1f}, {rs.lf_mean.max():.1f}] m  |  "
+        f"residual std = {rs.residual.std():.2f} m "
+        f"(surface std was {layer_surface.std():.2f} m)"
+    )
+
+    # --- 4. Cluster into kriging zones (SOM, matching get_clusters.m) ---
+    # SOM-clusters the estimates, computes each zone's representative
+    # range/sill from the cells the SOM actually classified, then fills the
+    # rest so every cell belongs to a zone (build_windows would otherwise
+    # leave most of the grid unkriged -- som_cluster_grid deliberately labels
+    # only what it's given).
+    cluster_grid, stats = build_kriging_zones(
+        rs.range_field, rs.sill_field, seed=seed
+    )
+    print(
+        f"[{label}] SOM formed {int(cluster_grid.max())} kriging zones, "
+        f"filled to full coverage"
+    )
+
+    # --- 5. Local kriging driver: windows, solve, simulate ---
+    # Two *different* variance maps, as in the reference pipeline (Main.m
+    # passes `sqrt(final_variance_themes)` as GLOBAL.img_unc and `modeltheme`
+    # separately; local_kriger.m reads the latter for each window's sill).
+    # Both are synthetic stand-ins here -- no real theme data is bundled --
+    # but modeltheme is scaled to the residual's own variance so the prior is
+    # physically consistent with the data being kriged; too small a sill caps
+    # how far a realization can deviate from the mean.
+    _, xx = np.mgrid[0:CROP, 0:CROP]
+    data_variance = np.full_like(rs.residual, 4.0)  # +/- 2 m per point
+    modeltheme = rs.residual.var() * (0.8 + 0.4 * (xx / CROP))
+
+    grid = pack_kriging_grid(rs.residual, data_variance, dx=dx)
+    windows = build_windows(
+        grid,
+        cluster_labels=cluster_grid,
+        active_mask=np.ones_like(rs.residual, dtype=bool),
+        conditioning_mask=points_mask,
+        cluster_stats=stats,
+        modeltheme=modeltheme,
+    )
+    result = simulate_layer(grid, windows, N_REALS, seed=seed)
+
+    # real = img_means + m_est + real  (Main.m:1038) -- absolute surfaces
+    kriged_surface, abs_reals = to_absolute(result, rs.lf_mean)
+    print(
+        f"[{label}] {len(windows)} windows, posterior std "
+        f"[{np.nanmin(result.post_std):.2f}, {np.nanmax(result.post_std):.2f}] m, "
+        f"realization std = {np.nanstd(abs_reals):.2f} m"
+    )
+    return LayerRun(
+        label=label,
+        surface=layer_surface,
+        points_mask=points_mask,
+        rs=rs,
+        cluster_grid=cluster_grid,
+        stats=stats,
+        result=result,
+        kriged_surface=kriged_surface,
+        abs_reals=abs_reals,
+    )
+
+
 estimator = load_default_rangesill_estimator()
-rs = estimate_range_sill_surface(surface, points_mask, estimator=estimator, dx=dx)
-
-n_valid = int((np.isfinite(rs.range_field) & np.isfinite(rs.sill_field)).sum())
-print(f"range/sill estimated at {n_valid}/{rs.range_field.size} cells")
-print(
-    f"median predicted range={np.nanmedian(rs.range_field):.0f} m, "
-    f"median predicted sill={np.nanmedian(rs.sill_field):.1f}"
-)
-print(
-    f"LF mean range [{rs.lf_mean.min():.1f}, {rs.lf_mean.max():.1f}] m  |  "
-    f"residual std = {rs.residual.std():.2f} m "
-    f"(surface std was {surface.std():.2f} m)"
-)
 
 # %% -------------------------------------------------
-# 4. Cluster into kriging zones (SOM, matching get_clusters.m)
+# 2-5. Run both layers, independently
 # -------------------------------------------------
-# SOM-clusters the estimates, computes each zone's representative range/sill
-# from the cells the SOM actually classified, then fills the rest so every
-# cell belongs to a zone (build_windows would otherwise leave most of the
-# grid unkriged -- som_cluster_grid deliberately labels only what it's given).
-cluster_grid, stats = build_kriging_zones(rs.range_field, rs.sill_field, seed=SEED)
+# Layer 2 is the same cutout LAYER_THICK metres lower. Taking a copy of a
+# real surface rather than inventing a second one keeps the geology
+# plausible, and a constant offset makes the crossings in step 6 easy to
+# reason about: any cell where the two kriged boundaries end up less than
+# LAYER_THICK apart is purely the two independent simulations disagreeing.
+LAYER_THICK = 4.0
+
+layer1 = run_layer(surface, "layer 1", SEED)
+layer2 = run_layer(surface - LAYER_THICK, "layer 2", SEED + 100)
+
+# Figures 1-3 below look at layer 1; these aliases keep them readable.
+points_mask = layer1.points_mask
+rs = layer1.rs
+cluster_grid = layer1.cluster_grid
 n_clusters = int(cluster_grid.max())
-print(f"SOM formed {n_clusters} kriging zones, filled to full coverage")
-
-# %% -------------------------------------------------
-# 5. Local kriging driver: windows, solve, simulate
-# -------------------------------------------------
-# Two *different* variance maps, as in the reference pipeline (Main.m passes
-# `sqrt(final_variance_themes)` as GLOBAL.img_unc and `modeltheme` separately;
-# local_kriger.m reads the latter for each window's sill). Both are synthetic
-# stand-ins here -- no real theme data is bundled -- but modeltheme is scaled
-# to the residual's own variance so the prior is physically consistent with
-# the data being kriged; too small a sill caps how far a realization can
-# deviate from the mean.
-yy, xx = np.mgrid[0:CROP, 0:CROP]
-data_variance = np.full_like(rs.residual, 4.0)  # +/- 2 m per conditioning point
-modeltheme = rs.residual.var() * (0.8 + 0.4 * (xx / CROP))
-
-grid = pack_kriging_grid(rs.residual, data_variance, dx=dx)
-windows = build_windows(
-    grid,
-    cluster_labels=cluster_grid,
-    active_mask=np.ones_like(rs.residual, dtype=bool),
-    conditioning_mask=points_mask,
-    cluster_stats=stats,
-    modeltheme=modeltheme,
-)
-print(f"Built {len(windows)} local kriging windows")
-
-# The ensemble is far larger than what gets plotted, because the ensemble
-# *mean* in figure 2 is only meaningful with enough draws behind it: the
-# standard error of a mean over N draws is sigma/sqrt(N), so 7 would leave
-# ~38% of the posterior std as visible noise where 200 leaves ~7%. It is
-# nearly free to ask for: each window's Cholesky factor is computed once and
-# then reused for every draw, so the cost of going from 8 to 200 is a wider
-# matrix multiply, not 25x the work.
-N_REALS = 200
-N_PLOT = 7  # how many individual realizations the figures show
-result = simulate_layer(grid, windows, N_REALS, seed=SEED)
-
-# real = img_means + m_est + real  (Main.m:1038) -- back to absolute surfaces
-kriged_surface, abs_reals = to_absolute(result, rs.lf_mean)
-
-print(
-    f"posterior std range "
-    f"[{np.nanmin(result.post_std):.2f}, {np.nanmax(result.post_std):.2f}] m"
-)
-print(
-    f"reference surface std = {surface.std():.2f} m  |  "
-    f"realization std = {np.nanstd(abs_reals):.2f} m"
-)
+result = layer1.result
+kriged_surface = layer1.kriged_surface
+abs_reals = layer1.abs_reals
 
 # %% -------------------------------------------------
 # Figure 1: the whole chain
@@ -473,4 +547,211 @@ ax3b.set_xlabel("x (m)")
 ax3b.set_title("Estimated range/sill along this row", fontsize=10)
 
 plt.tight_layout()
+
+
+# %% -------------------------------------------------
+# 6. Stack the layers, correcting crossings realization by realization
+# -------------------------------------------------
+# The two boundaries were kriged with no knowledge of each other, so nothing
+# so far prevents layer 2 being drawn *above* layer 1 -- a layer of negative
+# thickness. get_layered_models.m fixes this at the end, per realization,
+# top-down: wherever the lower boundary rises above the upper one it is
+# pushed down to meet it, so the layer pinches out to zero thickness instead
+# of inverting.
+#
+# Per realization, not on the mean. The clamp is nonlinear, so the mean of
+# the corrected draws is not the correction of the mean -- and correcting
+# only the mean would leave every individual realization invalid, which is
+# the opposite of what an ensemble is for.
+raw_thickness = layer1.abs_reals - layer2.abs_reals
+model = stack_realizations([layer1.abs_reals, layer2.abs_reals])
+fixed_thickness = -np.diff(model.surfaces, axis=2)[:, :, 0, :]
+
+crossing = raw_thickness < 0
+# A clamped cell has lower == upper exactly, so its thickness is -0.0 once
+# differenced. Adding 0.0 normalises that back to +0.0 (IEEE 754), which is
+# only cosmetic but stops the summary reading as if it still went negative.
+min_thickness = float(fixed_thickness.min()) + 0.0
+assert min_thickness >= 0.0, "stacking left a layer of negative thickness"
+print(
+    f"layer crossings before correction: {int(crossing.sum())} of "
+    f"{crossing.size} (cell, realization) pairs "
+    f"({crossing.mean():.1%}), worst overlap {-raw_thickness.min():.2f} m"
+)
+print(
+    f"clamped by stack_realizations: {int(model.n_clamped[1])} "
+    f"-- minimum thickness now {min_thickness:.2f} m "
+    f"(nominal separation was {LAYER_THICK:.1f} m)"
+)
+
+# %% -------------------------------------------------
+# Figure 4: what the correction did
+# -------------------------------------------------
+fig4, axes4 = plt.subplots(1, 3, figsize=(16, 4.8))
+
+# How often each cell needed correcting, across the whole ensemble. The
+# pattern is not noise: crossings concentrate where the two layers' kriging
+# disagreed most, which is away from their respective conditioning points.
+im = axes4[0].imshow(crossing.mean(axis=2), cmap="magma", vmin=0, vmax=1)
+axes4[0].set_title("Fraction of realizations\nwhere the layers crossed")
+fig4.colorbar(im, ax=axes4[0], shrink=0.85)
+
+# One realization's thickness, before and after, on a scale centred at zero
+# so negative (invalid) thickness is unmistakable: RdBu puts negatives in
+# red. Scaled to the 99th percentile rather than the max, or a couple of
+# deep outliers would wash the rest of the map out to near-white.
+tmax = float(np.percentile(np.abs(raw_thickness[:, :, 0]), 99))
+im = axes4[1].imshow(raw_thickness[:, :, 0], cmap="RdBu", vmin=-tmax, vmax=tmax)
+axes4[1].set_title(
+    f"Realization 1 thickness, raw\n(red = inverted, min "
+    f"{raw_thickness[:, :, 0].min():.1f} m)"
+)
+fig4.colorbar(im, ax=axes4[1], shrink=0.85, label="m")
+
+im = axes4[2].imshow(fixed_thickness[:, :, 0], cmap="RdBu", vmin=-tmax, vmax=tmax)
+axes4[2].set_title(
+    f"Same, after stacking\n(no red left, min {fixed_thickness[:, :, 0].min():.1f} m)"
+)
+fig4.colorbar(im, ax=axes4[2], shrink=0.85, label="m")
+
+for ax in axes4:
+    ax.set_xticks([])
+    ax.set_yticks([])
+fig4.suptitle(
+    f"Layer correction: two independently kriged boundaries {LAYER_THICK:.0f} m "
+    "apart, stacked so they never cross"
+)
+fig4.tight_layout(rect=[0, 0, 1, 0.93])
+
+# %% -------------------------------------------------
+# Figure 5: both boundaries along the profile row, one realization
+# -------------------------------------------------
+# One realization, not N_PLOT: overlaying several puts three lines per draw
+# on the axes and the before/after pair becomes impossible to follow. The
+# one shown is whichever realization crosses most often on this row, so the
+# figure has something to show -- picked rather than assumed, since on any
+# given row most draws cross nowhere at all.
+row_crossing = crossing[SLICE_ROW, :, :]  # (nx, n_reals)
+k_show = int(row_crossing.sum(axis=0).argmax())
+n_cross_row = int(row_crossing[:, k_show].sum())
+
+fig5, ax5 = plt.subplots(figsize=(12, 5))
+ax5.plot(
+    x_slice,
+    layer1.abs_reals[SLICE_ROW, :, k_show],
+    color="tab:blue",
+    linewidth=1.8,
+    label="Layer 1 (upper, unchanged)",
+    zorder=3,
+)
+ax5.plot(
+    x_slice,
+    layer2.abs_reals[SLICE_ROW, :, k_show],
+    color="tab:red",
+    linewidth=1.2,
+    linestyle="--",
+    label="Layer 2, as drawn",
+    zorder=3,
+)
+ax5.plot(
+    x_slice,
+    model.surfaces[SLICE_ROW, :, 1, k_show],
+    color="tab:red",
+    linewidth=2.2,
+    label="Layer 2, after stacking",
+    zorder=4,
+)
+# Shade the columns the clamp actually touched, so the eye goes straight to
+# them rather than hunting for where the two red lines part company.
+ax5.fill_between(
+    x_slice,
+    *ax5.get_ylim(),
+    where=row_crossing[:, k_show],
+    color="0.85",
+    zorder=0,
+    label="Clamped here",
+)
+ax5.set_xlabel("x (m)")
+ax5.set_ylabel("elevation (m)")
+ax5.set_title(
+    f"Row {SLICE_ROW}, realization {k_show + 1}: the lower boundary was drawn "
+    f"above the upper one at {n_cross_row} of {CROP} cells,\nand now runs "
+    f"along it there instead"
+)
+ax5.legend(loc="upper right")
+plt.tight_layout()
+
+# %% -------------------------------------------------
+# Figure 6: four realizations as filled cross-sections
+# -------------------------------------------------
+# The same profile row, but drawn the way a cross-section normally is: the
+# two boundaries bound three units, and the units are filled rather than the
+# boundaries merely drawn. Four realizations stacked vertically, sharing
+# both axes, so the eye compares like with like -- the question this figure
+# answers is "how much does the geometry change between draws?", and only a
+# common scale lets you answer it.
+#
+# These are the *corrected* surfaces from step 6, so no unit ever has
+# negative thickness. Where the middle unit vanishes, the two boundaries are
+# touching: a pinch-out, which is a legitimate geological outcome, and is
+# exactly what the clamp produces instead of an inversion.
+#
+# Three fills is three *identities*, not a magnitude, so this is a
+# categorical assignment: hues taken in fixed slot order from the validated
+# default palette rather than picked by eye. Fills carry alpha so the
+# boundaries stay readable on top of them, and each boundary is drawn as a
+# white line under a dark one, which gives the pair of touching fills a
+# visible gap instead of letting two saturated areas abut directly.
+N_SECTIONS = 4
+UNIT_ABOVE, UNIT_MIDDLE, UNIT_BELOW = "#2a78d6", "#eb6834", "#1baf7a"
+FILL_ALPHA = 0.75
+
+sec_top = model.surfaces[SLICE_ROW, :, 0, :N_SECTIONS]
+sec_bot = model.surfaces[SLICE_ROW, :, 1, :N_SECTIONS]
+pad = 0.08 * (sec_top.max() - sec_bot.min())
+y_hi, y_lo = sec_top.max() + pad, sec_bot.min() - pad
+
+fig6, axes6 = plt.subplots(
+    N_SECTIONS, 1, figsize=(12, 11), sharex=True, sharey=True
+)
+for k, ax in enumerate(axes6):
+    top, bot = sec_top[:, k], sec_bot[:, k]
+
+    ax.fill_between(x_slice, top, y_hi, color=UNIT_ABOVE, alpha=FILL_ALPHA,
+                    label="Above layer 1")
+    ax.fill_between(x_slice, bot, top, color=UNIT_MIDDLE, alpha=FILL_ALPHA,
+                    label="Between the layers")
+    ax.fill_between(x_slice, y_lo, bot, color=UNIT_BELOW, alpha=FILL_ALPHA,
+                    label="Below layer 2")
+
+    for boundary in (top, bot):
+        ax.plot(x_slice, boundary, color="white", linewidth=3.2, zorder=3)
+        ax.plot(x_slice, boundary, color="0.15", linewidth=1.6, zorder=4)
+
+    # How often this draw pinched out on this row -- the visible consequence
+    # of the correction, stated so it is not left to be eyeballed.
+    pinched = int(row_crossing[:, k].sum())
+    ax.set_ylabel("elevation (m)")
+    ax.text(
+        0.012,
+        0.9,
+        f"Realization {k + 1}" + (f" -- {pinched} cells pinched out" if pinched else ""),
+        transform=ax.transAxes,
+        fontsize=9,
+        va="top",
+        bbox=dict(facecolor="white", edgecolor="0.7", boxstyle="round,pad=0.3"),
+    )
+
+axes6[0].set_ylim(y_lo, y_hi)
+# No margin: matplotlib's default leaves a white gutter at each end, which on
+# a filled section reads as the units stopping short of the frame.
+axes6[0].set_xlim(x_slice[0], x_slice[-1])
+axes6[0].legend(loc="lower left", ncol=3, fontsize=8, framealpha=0.95)
+axes6[-1].set_xlabel("x (m)")
+fig6.suptitle(
+    f"Row {SLICE_ROW}: four realizations of the layered model, after the "
+    "monotonicity correction"
+)
+fig6.tight_layout(rect=[0, 0, 1, 0.97])
+
 plt.show()
