@@ -4,8 +4,6 @@ import numpy as np
 # Project imports
 from utils import load_esri_ascii_grid, grid_coordinates_from_esri_meta
 
-# NOTE: this data path is not bundled with the repo yet, so this script does
-# not run as-is. Left in place as the intended Funen entry point.
 # --- Load topo surface ---
 z_topo, meta = load_esri_ascii_grid(
     "examples/data/Funen_hydrostrat_model/surfaces/topo.asc"
