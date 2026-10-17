@@ -7,8 +7,8 @@ The library is designed to be model-agnostic: the same workflow applies to any h
 ## Capabilities
 
 - Construct spatial variance maps and correlation structures for layer boundaries from multiple geophysical data themes (TEM, PACES, gamma logs, seismic reflectors, etc.)
-- Estimate the local variogram range at sampled points with a pretrained neural-network estimator (`geosigma.preprocess.rangesill`; sill is a closed-form statistic, not learned)
-- Condition each layer boundary by local kriging, then draw geostatistical realizations directly from the posterior covariance by Cholesky decomposition (`get_reals_cholesky`) — not by sequential simulation
+- Estimate the local variogram range at sampled points with a pretrained neural-network estimator (`geosigma.preprocess.rangesill`; sill is a closed-form statistic, not learned) and group points into kriging zones (`geosigma.preprocess.clusters`)
+- Condition each layer boundary by local kriging (`geosigma.kriging`), then draw geostatistical realizations directly from the posterior covariance by Cholesky decomposition (`get_reals_cholesky`) — not by sequential simulation — and blend overlapping local windows into one coherent surface
 - Export results as GeoTIFF rasters for use in downstream modelling workflows
 - Integrate with PEST for parameter perturbation and ensemble-based uncertainty propagation
 
