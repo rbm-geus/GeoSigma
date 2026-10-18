@@ -30,6 +30,7 @@ from geosigma.preprocess.rangesill import (
     NNRangeSillEstimator,
     _build_net,
     build_range_cholesky_lookup,
+    estimate_center_range_sill,
     estimate_range_sill_grid,
     estimate_range_sill_surface,
     extract_residual_patch,
@@ -202,6 +203,47 @@ def test_estimate_range_sill_grid_uses_scattered_values_not_dense_window():
     np.testing.assert_allclose(sills, [0.0, 0.0])
 
 
+# --------------------------------------------------------------------------- #
+# estimate_center_range_sill (stub estimator, no torch needed)
+# --------------------------------------------------------------------------- #
+def test_estimate_center_range_sill_returns_the_centre_cells_estimate():
+    # A field whose centre window is the whole field: the returned pair must
+    # match what estimate_range_sill_grid reports for the centre cell.
+    field = np.arange(81, dtype=float).reshape(9, 9)
+    got = estimate_center_range_sill(
+        field, estimator=_ConstantEstimator(), dx=1.0, n_scatter_points=12, seed=0
+    )
+
+    rows, cols, ranges, sills, _ = estimate_range_sill_grid(
+        field,
+        np.ones((9, 9), dtype=bool),
+        estimator=_ConstantEstimator(),
+        dx=1.0,
+        minigrid_size=9,
+    )
+    idx = np.flatnonzero((rows == 4) & (cols == 4))[0]
+    assert got[0] == pytest.approx(ranges[idx])
+
+
+def test_estimate_center_range_sill_is_reproducible_given_a_seed():
+    field = np.arange(81, dtype=float).reshape(9, 9)
+    kw = dict(estimator=_ConstantEstimator(), dx=1.0, n_scatter_points=8)
+    assert estimate_center_range_sill(
+        field, seed=3, **kw
+    ) == estimate_center_range_sill(field, seed=3, **kw)
+
+
+def test_estimate_center_range_sill_rejects_a_non_square_field():
+    with pytest.raises(ValueError, match="square"):
+        estimate_center_range_sill(np.zeros((9, 7)), estimator=_ConstantEstimator())
+
+
+def test_estimate_center_range_sill_rejects_an_even_side():
+    # No single centre cell to read off.
+    with pytest.raises(ValueError, match="odd"):
+        estimate_center_range_sill(np.zeros((8, 8)), estimator=_ConstantEstimator())
+
+
 def test_estimate_range_sill_grid_separate_conditioning_points():
     # Estimate densely (every cell), conditioned on a separate, sparse set --
     # matching get_interpolated_minigrids_parallel.m's mask/drawpoints split,
@@ -366,18 +408,18 @@ def test_estimate_range_sill_surface_matches_manual_padded_call():
 # Training + the estimate_range_sill_grid pipeline end-to-end (needs torch)
 # --------------------------------------------------------------------------- #
 def _predict_center(estimator, field, dx, n_scatter_points=20, seed=0):
-    """Mirrors example_train_rangesill_nn.py's evaluate_field helper."""
-    ny, nx = field.shape
-    center = (ny // 2, nx // 2)
-    rows, cols, _ = sample_scatter_points(field, n_scatter_points, seed=seed)
-    mask = np.zeros(field.shape, dtype=bool)
-    mask[rows, cols] = True
-    mask[center] = True
-    out_rows, out_cols, ranges, sills, _means = estimate_range_sill_grid(
-        field, mask, estimator=estimator, dx=dx, minigrid_size=ny
+    """Thin wrapper over the library's estimate_center_range_sill.
+
+    Kept so these tests read positionally (estimator first); the library
+    function takes the field first and the estimator by keyword.
+    """
+    return estimate_center_range_sill(
+        field,
+        estimator=estimator,
+        dx=dx,
+        n_scatter_points=n_scatter_points,
+        seed=seed,
     )
-    idx = np.flatnonzero((out_rows == center[0]) & (out_cols == center[1]))[0]
-    return ranges[idx], sills[idx]
 
 
 # --------------------------------------------------------------------------- #

@@ -51,7 +51,7 @@ from geosigma.preprocess.rangesill import (
     CELL_SIZE,
     MINIGRID_SIZE,
     NNRangeSillEstimator,
-    estimate_range_sill_grid,
+    estimate_center_range_sill,
     generate_training_data,
     load_default_rangesill_estimator,
     load_training_data,
@@ -128,34 +128,25 @@ ARCHITECTURE = "conv"
 # ARCHITECTURE = "dense"
 
 
-def evaluate_field(
-    estimator, field, *, dx=DX, n_scatter_points=N_SCATTER_POINTS, seed=None
-):
-    """Estimate (range, sill) at a field's centre, the way production does:
-
-    sample scattered points, hand them to estimate_range_sill_grid (which
-    interpolates and calls the estimator), and read off the centre cell's
-    result. ``field`` must be MINIGRID x MINIGRID so its centre's window is
-    the whole field, with nothing clipped at an edge.
-    """
-    ny, nx = field.shape
-    center = (ny // 2, nx // 2)
-    rows, cols, _ = sample_scatter_points(field, n_scatter_points, seed=seed)
-    mask = np.zeros(field.shape, dtype=bool)
-    mask[rows, cols] = True
-    mask[center] = True
-
-    out_rows, out_cols, ranges, sills, _means = estimate_range_sill_grid(
-        field, mask, estimator=estimator, dx=dx, minigrid_size=ny
-    )
-    idx = np.flatnonzero((out_rows == center[0]) & (out_cols == center[1]))[0]
-    return ranges[idx], sills[idx]
-
-
 def evaluate(estimator, fields, seeds):
-    """Return (pred_ranges, pred_sills) arrays for a list of fields."""
+    """Return (pred_ranges, pred_sills) arrays for a list of fields.
+
+    `estimate_center_range_sill` does the per-field work: scatter points
+    over a MINIGRID x MINIGRID field, run them through the same
+    interpolation and estimator path production uses, and read off the
+    centre cell.
+    """
     preds = np.array(
-        [evaluate_field(estimator, f, seed=s) for f, s in zip(fields, seeds)]
+        [
+            estimate_center_range_sill(
+                f,
+                estimator=estimator,
+                dx=DX,
+                n_scatter_points=N_SCATTER_POINTS,
+                seed=s,
+            )
+            for f, s in zip(fields, seeds)
+        ]
     )
     return preds[:, 0], preds[:, 1]
 
@@ -403,8 +394,9 @@ estimator.save(out_path)
 print(f"Saved trained estimator to {out_path}")
 
 reloaded = NNRangeSillEstimator.load(out_path)
-r0, s0 = evaluate_field(estimator, eval_fields[0], seed=eval_seeds[0])
-r1, s1 = evaluate_field(reloaded, eval_fields[0], seed=eval_seeds[0])
+kw = dict(dx=DX, n_scatter_points=N_SCATTER_POINTS, seed=eval_seeds[0])
+r0, s0 = estimate_center_range_sill(eval_fields[0], estimator=estimator, **kw)
+r1, s1 = estimate_center_range_sill(eval_fields[0], estimator=reloaded, **kw)
 print(f"reload sanity check: original={r0:.1f},{s0:.2f}  reloaded={r1:.1f},{s1:.2f}")
 assert np.isclose(r0, r1) and np.isclose(s0, s1)
 

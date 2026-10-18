@@ -71,6 +71,7 @@ __all__ = [
     "sample_scatter_points",
     "interpolate_scatter_points",
     "estimate_range_sill_grid",
+    "estimate_center_range_sill",
     "RangeSillSurface",
     "estimate_range_sill_surface",
     "build_range_cholesky_lookup",
@@ -690,6 +691,83 @@ def estimate_range_sill_grid(
         ranges[k] = range_pred if range_pred >= 0 else 100.0
 
     return rows, cols, ranges, sills, means
+
+
+def estimate_center_range_sill(
+    field: np.ndarray,
+    *,
+    estimator: RangeSillEstimator | None = None,
+    dx: float = CELL_SIZE,
+    n_scatter_points: int = 20,
+    seed: int | None = None,
+) -> tuple[float, float]:
+    """Estimate (range, sill) at the centre of a single field.
+
+    The production path in miniature: scatter points over the field, hand
+    them to :func:`estimate_range_sill_grid` (which interpolates them onto a
+    regular grid and calls the estimator), and read off the centre cell. Use
+    it to score an estimator against fields of known range/sill, or to
+    inspect a single window without building a whole surface.
+
+    Going through :func:`estimate_range_sill_grid` rather than calling the
+    estimator directly is the point: it exercises the same scatter,
+    interpolation and sill-from-scatter-variance path production uses, so a
+    score obtained here reflects what the estimator will actually do.
+
+    Parameters
+    ----------
+    field : ndarray, shape (n, n)
+        A square field whose **centre window is the whole field**, so nothing
+        is clipped at an edge. In practice that means ``n`` equal to the
+        ``minigrid_size`` you intend to estimate with; ``n`` is passed as
+        ``minigrid_size``, so any odd square works.
+    estimator : RangeSillEstimator, optional
+        Defaults to the shipped network, as in
+        :func:`estimate_range_sill_grid`.
+    dx : float
+        Cell size in metres.
+    n_scatter_points : int
+        How many points to scatter. Production supplies whatever INPOX drew
+        inside the window, so this is the knob that decides whether a score
+        reflects production's point density or something easier.
+    seed : int, optional
+        Seeds the scatter, for reproducible scoring.
+
+    Returns
+    -------
+    (range, sill) : tuple of float
+        Range in metres, sill in the field's own squared units. Either may
+        be NaN if the centre window was skipped (see
+        :func:`estimate_range_sill_grid`'s ``max_nan_fraction``).
+
+    Raises
+    ------
+    ValueError
+        If ``field`` is not square, or has an even side length (no single
+        centre cell).
+    """
+    field = np.asarray(field, dtype=float)
+    if field.ndim != 2 or field.shape[0] != field.shape[1]:
+        raise ValueError(f"field must be a square 2-D array; got {field.shape}")
+    n = field.shape[0]
+    if n % 2 == 0:
+        raise ValueError(
+            f"field side length must be odd to have a centre cell; got {n}"
+        )
+
+    center = (n // 2, n // 2)
+    rows, cols, _ = sample_scatter_points(field, n_scatter_points, seed=seed)
+    mask = np.zeros(field.shape, dtype=bool)
+    mask[rows, cols] = True
+    # The centre is forced on: it is the cell being estimated, and the
+    # scatter is random, so it is not otherwise guaranteed to be included.
+    mask[center] = True
+
+    out_rows, out_cols, ranges, sills, _means = estimate_range_sill_grid(
+        field, mask, estimator=estimator, dx=dx, minigrid_size=n
+    )
+    idx = np.flatnonzero((out_rows == center[0]) & (out_cols == center[1]))[0]
+    return float(ranges[idx]), float(sills[idx])
 
 
 @dataclass
