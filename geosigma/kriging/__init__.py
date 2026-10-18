@@ -35,8 +35,14 @@ comes from there and not from the cluster stats.
 What is deliberately **not** here: the ``redo_*``/checkpoint/email scaffolding
 and region ``switch`` branches of Main.m, and zero-thickness tie enforcement
 (``tie_realizations``, which stays in :mod:`geosigma.assembly` as an optional
-post-pass). See ``examples/demo_geosigma_pipeline.py`` for how a full,
-multi-stage run is composed instead of being a library function.
+post-pass).
+
+Composing a full multi-stage run is also left to the caller. The choice of
+point-drawing scheme, clusterer and variance maps is the modelling, so
+wrapping one particular choice in a library function would narrow the
+library rather than widen it. ``examples/demo_kriging_pipeline_end_to_end.py``
+shows one such composition, including running these functions once per
+boundary and stacking the results.
 
 An earlier version of this package built its own buffer-ramp and windowing
 logic from a paraphrased description rather than the actual MATLAB source,

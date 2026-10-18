@@ -10,7 +10,12 @@ implemented). This package covers what happens to those points next:
 
 * :mod:`~geosigma.preprocess.rangesill` — windowed range/sill extraction via a
   pluggable ``RangeSillEstimator``, defaulting to a pretrained network
-  (``NNRangeSillEstimator`` / ``load_default_rangesill_estimator``).
+  (``NNRangeSillEstimator`` / ``load_default_rangesill_estimator``). Start at
+  ``estimate_range_sill_surface``: it is the whole-grid entry point, and
+  returns the low-frequency mean and the residual to krige alongside the
+  range/sill fields. ``estimate_range_sill_grid`` is the per-point layer
+  underneath it, and ``estimate_center_range_sill`` scores an estimator on a
+  single field of known range/sill.
 * :mod:`~geosigma.preprocess.clusters` — grouping per-point range/sill
   estimates into kriging zones: a simple point-array clusterer
   (``cluster_range_sill``, k-means or SOM), the per-cluster range/sill
@@ -23,7 +28,10 @@ implemented). This package covers what happens to those points next:
   literal, whole-grid translation of ``get_clusters.m`` (SOM clustering plus
   its neighbourhood-smoothing and gap-filling passes), for when you want
   output that corresponds to the reference pipeline's rather than just *a*
-  reasonable clustering.
+  reasonable clustering. ``build_kriging_zones`` is the entry point most
+  callers want: it sequences ``som_cluster_grid`` -> ``cluster_stats`` ->
+  gap-fill in the order that matters, and returns exactly what
+  :func:`geosigma.kriging.build_windows` expects.
 
 Masks (``get_layermasks``) are still scaffold-only, deferred to **Phase 5**.
 

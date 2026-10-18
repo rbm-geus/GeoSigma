@@ -5,20 +5,29 @@
 # Co-authors: Frederik Falk; Claude (Anthropic)
 """geosigma.assembly — final model assembly and export.
 
-Blends kriged surfaces into the background model (``merge_layers``), enforces
-zero-thickness ties (``tie_realizations`` + snapped-well handling, isolated in
-``ties`` so it can be dropped later), stacks layers top-down enforcing
-monotonicity (``get_layered_models``), appends a fixed bottom (``add_bottom``),
-and writes mean model + realizations via rasterio (``export``).
+What kriging and simulation leave behind is one independently drawn ensemble
+per boundary. This package turns those into a single layered model.
 
-Implemented so far:
+Implemented
+-----------
+* :mod:`~geosigma.assembly.layers` — stacking independently kriged
+  boundaries into a model whose layers never cross
+  (:func:`~geosigma.assembly.layers.stack_realizations`, the monotonicity
+  part of ``get_layered_models.m``), applied per realization. This is the
+  step the end-to-end demo finishes with.
 
-* :mod:`~geosigma.assembly.layers` — stacking independently kriged boundaries
-  into a model whose layers never cross (``stack_realizations``, the
-  monotonicity part of ``get_layered_models.m``), applied per realization.
+Planned, not yet written (Phase 7)
+----------------------------------
+Named here so the intended scope is visible, but **none of these exist
+yet** — do not import them:
 
-Still scaffold, deferred to **Phase 7**: ``merge_layers``,
-``tie_realizations``, ``add_bottom`` and raster export.
+* ``merge_layers`` — blend kriged surfaces into a background model.
+* ``tie_realizations`` — zero-thickness ties at wells, plus snapped-well
+  handling; isolated in a ``ties`` module so it can be dropped later. Its
+  input, the tie grid, already exists as
+  :func:`geosigma.themes.corr_map`.
+* ``add_bottom`` — append a fixed bottom boundary.
+* raster export of the mean model and realizations via rasterio.
 """
 
 from .layers import LayeredModel, clamp_to_upper, stack_realizations
