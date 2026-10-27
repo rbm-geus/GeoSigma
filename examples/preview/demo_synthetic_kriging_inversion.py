@@ -1,3 +1,10 @@
+"""Demo: synthetic local kriging, inversion and Cholesky realizations  [PREVIEW]
+
+Exercises the translated kriging primitives on a small synthetic grid. The
+kriging driver that applies them to a real model is part of v1.0.0.
+See examples/preview/README.md.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from geosigma import local_kriging_setup_img

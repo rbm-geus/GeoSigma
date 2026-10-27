@@ -5,6 +5,8 @@ Created on Tue Feb 10 13:07:52 2026
 @author: rbm
 """
 
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -12,10 +14,13 @@ import numpy as np
 from utils import load_geotiff_grid,grid_coordinates_from_esri_meta
 from plotting import add_in_between_gridlines
 
+# Data paths are relative to this file, so the demo runs from any directory.
+DATA = Path(__file__).resolve().parent / "data"
+
 
 # --- Load topo surface ---
 z_topo, meta = load_geotiff_grid(
-    "examples/data/Jutland_hydrostrat_model/top_surface.tif"
+    str(DATA / "Jutland_hydrostrat_model" / "top_surface.tif")
 )
 
 # --- Build coordinates ---

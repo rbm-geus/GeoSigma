@@ -9,6 +9,7 @@ Created on Thu May 21 11:18:10 2026
 
 import os
 import glob
+from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -20,7 +21,8 @@ from utils import load_geotiff_grid, grid_coordinates_from_esri_meta
 # Load all GeoTIFF surfaces
 # ============================================================
 
-folder = "examples/data/Jutland_hydrostrat_model"
+# Data paths are relative to this file, so the demo runs from any directory.
+folder = str(Path(__file__).resolve().parent / "data" / "Jutland_hydrostrat_model")
 
 # Find all tif files
 tif_files = glob.glob(os.path.join(folder, "*.tif"))

@@ -6,6 +6,7 @@ Created on Wed Feb 11 16:03:24 2026
 """
 
 import os
+from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -18,7 +19,8 @@ from plotting import add_in_between_gridlines
 # --- Settings
 # ------------------------------------------------------------------
 
-data_folder = "tests/data/Jutland_hydrostrat_model"
+# Data paths are relative to this file, so the demo runs from any directory.
+data_folder = str(Path(__file__).resolve().parent / "data" / "Jutland_hydrostrat_model")
 n_layers = 15
 
 plot_maps = True

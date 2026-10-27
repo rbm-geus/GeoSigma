@@ -1,4 +1,6 @@
 
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -6,10 +8,13 @@ import numpy as np
 from utils import load_esri_ascii_grid, grid_coordinates_from_esri_meta
 from plotting import add_in_between_gridlines
 
+# Data paths are relative to this file, so the demo runs from any directory.
+DATA = Path(__file__).resolve().parent / "data"
+
 
 # --- Load topo surface ---
 z_topo, meta = load_esri_ascii_grid(
-    "examples/data/Funen_hydrostrat_model/surfaces/topo.asc" # Path not included at the moment!! Fix
+    str(DATA / "Funen 2019 model" / "topo.asc")
 )
 
 # --- Build coordinates ---

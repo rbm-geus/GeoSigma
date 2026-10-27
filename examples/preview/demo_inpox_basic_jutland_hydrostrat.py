@@ -1,12 +1,23 @@
+"""Demo: INPOX conditioning-point extraction on a real model  [PREVIEW]
+
+INPOX selects the points a layer boundary is conditioned on during simulation,
+which belongs to the v1.0.0 simulation workflow. See examples/preview/README.md.
+"""
+
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 from utils import load_geotiff_grid, grid_coordinates_from_esri_meta
 from geosigma import draw_points_inpox, ftot_laplace,visualize_transfer_function
 
+# Data paths are relative to this file, so the demo runs from any directory.
+DATA = Path(__file__).resolve().parent.parent / "data"
+
 # ============================================================
 # --- Load surface ---
-z, meta = load_geotiff_grid("examples/data/Jutland_hydrostrat_model/top_surface.tif")
-#z, meta = load_geotiff_grid("examples/data/Jutland_hydrostrat_model/layer_4_bottom.tif")
+z, meta = load_geotiff_grid(str(DATA / "Jutland_hydrostrat_model" / "top_surface.tif"))
+#z, meta = load_geotiff_grid(str(DATA / "Jutland_hydrostrat_model" / "layer_4_bottom.tif"))
 x, y, xx, yy = grid_coordinates_from_esri_meta(meta)
 
 # --- INPOX Parameters ---

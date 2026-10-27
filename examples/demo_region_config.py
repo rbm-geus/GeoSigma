@@ -15,12 +15,14 @@ from pathlib import Path
 from geosigma.config import RegionConfig
 from utils import load_geotiff_grid, grids_aligned
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-CONFIG = REPO_ROOT / "examples" / "data" / "Jutland_hydrostrat_model" / "region_config.json"
+HERE = Path(__file__).resolve().parent
+CONFIG = HERE / "data" / "Jutland_hydrostrat_model" / "region_config.json"
 
 
 def main() -> None:
     cfg = RegionConfig.from_file(CONFIG)
+    # surface_dir in the sample config is relative to the repository root.
+    cfg.surface_dir = str(HERE.parent / cfg.surface_dir)
     print(f"Region: {cfg.name}")
     print(f"{cfg.n_interfaces} interfaces, {cfg.n_modelled_layers} modelled boundaries\n")
 

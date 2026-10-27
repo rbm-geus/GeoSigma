@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Demo: INPOX-based conditional simulation
+Demo: INPOX-based conditional simulation  [PREVIEW — INCOMPLETE]
+
+This is a v1.0.0 preview. It currently stops after step 3: conditioning and
+realization generation (steps 4-5) depend on the kriging driver, which is not
+translated yet. See examples/preview/README.md.
 
 Steps:
 1. Load surface
@@ -9,11 +13,13 @@ Steps:
 4. Condition on sampled points
 5. Generate realizations
 
-This script demonstrates the full GeoSigma workflow.
+When finished, this script will demonstrate the full GeoSigma workflow.
 
 /RBM, 20-03-2026
 """
 
+
+from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -29,11 +35,14 @@ from geosigma.core.get_reals_cholesky import get_reals_cholesky
 
 np.random.seed(42)
 
+# Data paths are relative to this file, so the demo runs from any directory.
+DATA = Path(__file__).resolve().parent.parent / "data"
+
 #%% -------------------------------------------------
 # 1. Load surface
 # -------------------------------------------------
 z, meta = load_geotiff_grid(
-    "examples/data/Jutland_hydrostrat_model/top_surface.tif"
+    str(DATA / "Jutland_hydrostrat_model" / "top_surface.tif")
 )
 
 # Handle nodata
