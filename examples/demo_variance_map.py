@@ -17,18 +17,30 @@ finish on the bundled sample model, without any kriging:
    * ``boreholes`` — a few sparse, deep point sources over the whole area,
      using a spec defined inline below.
 
-3. Build one variance theme per source, combine them as parallel precisions,
-   and floor the result with the depth-dependent minimum map.
-4. Write the combined variance stack as per-layer GeoTIFFs (the handoff format
-   the kriging pipeline will consume) and plot it.
+3. Build one variance theme per source, add the **model theme**, combine all
+   of them as parallel precisions, and floor the result with the
+   depth-dependent minimum map.
+4. Write the combined variance stack as per-layer GeoTIFFs: the handoff files
+   the kriging pipeline will consume (``variance_NN.tif``) and a GIS-ready
+   standard-deviation copy (``std_NN.tif``, in metres). Then plot it.
+
+The model theme is the **background variance**: the prior uncertainty of the
+hydrostratigraphic model itself, at every cell, before any data are considered.
+It is a fixed part of the method, not an optional extra. Because it enters the
+combine like any other theme, the combined variance can never exceed it, so
+cells that no data source reaches get the model's own uncertainty instead of
+the no-information sentinel. Without it, those cells keep the sentinel
+(``100000``, or ``100000 / N`` once ``N`` sentinel themes are combined). The
+demo uses one uniform model-quality class and the default depth ramp of
+``geosigma.themes.model_theme``.
 
 .. important::
    **The data are synthetic and the specs are illustrative.** The data points
    are randomly generated; their depths and thicknesses are read off the sample
    model surfaces. Neither ``dronetem.spec.yaml`` nor the inline borehole spec
-   is a calibrated (Danish or otherwise) uncertainty model; they exist to show
-   the workflow. For the reasoning behind real specs, see
-   ``docs/bring_your_own_data.md``.
+   is a calibrated (Danish or otherwise) uncertainty model, and neither is the
+   single-class model theme; they exist to show the workflow. For the reasoning
+   behind real specs, see ``docs/bring_your_own_data.md``.
 
 Output goes to ``examples/output/demo_variance_map/`` (git-ignored).
 """
@@ -45,9 +57,12 @@ from geosigma.themes import (
     apply_floor,
     build_theme,
     combine_variances,
+    informed_mask,
     load_spec,
     load_spec_yaml,
     minimum_map,
+    model_theme,
+    write_display_stack,
     write_variance_stack,
 )
 from utils import grid_coordinates_from_esri_meta, load_geotiff_grid
@@ -160,13 +175,20 @@ print(f"Synthetic sources: {drone_x.size} droneTEM soundings, {n_bh} boreholes")
 
 
 # ============================================================
-# 3. Build themes, combine, floor
+# 3. Build themes, add the model theme, combine, floor
 # ============================================================
 themes = {
     "droneTEM": build_theme(drone, drone_spec, grid_x, grid_y, n_layers),
     "boreholes": build_theme(boreholes, borehole_spec, grid_x, grid_y, n_layers),
 }
-combined = combine_variances(list(themes.values()))
+
+# Model theme = background variance (the prior for the model's quality). One
+# uniform quality class here; a real model would map its own quality classes.
+model_class = np.zeros(terrain.shape, dtype=int)
+themes["model"] = model_theme(model_class, terrain, bottom_stack)
+
+all_themes = list(themes.values())
+combined = combine_variances(all_themes)
 final = apply_floor(combined, minimum_map(terrain, bottom_stack))
 
 for name, grid in themes.items():
@@ -180,20 +202,39 @@ for name, grid in themes.items():
 # ============================================================
 # 4. Write the handoff format and plot
 # ============================================================
+# Flip back to north-up for the GeoTIFFs.
 paths = write_variance_stack(np.flip(final, axis=0), meta, OUT_DIR)
-print(f"Wrote {len(paths)} variance GeoTIFFs to {OUT_DIR}")
+write_display_stack(
+    np.flip(final, axis=0),
+    meta,
+    OUT_DIR,
+    informed=np.flip(informed_mask(all_themes), axis=0),
+)
+print(f"Wrote {len(paths)} layers to {OUT_DIR}:")
+print("  variance_NN.tif  handoff format for kriging (variance, sentinel kept)")
+print("  std_NN.tif       for GIS viewing (standard deviation in m, -9999 = no data)")
+print(
+    "Combined variance never exceeds the model theme: "
+    f"{bool(np.all(combined <= themes['model'] * (1 + 1e-12)))}"
+)
 
 extent = [x_min, x_max, y_min, y_max]
-log_kw = dict(
-    origin="lower",
-    extent=extent,
-    cmap="viridis",
-    vmin=-1,
-    vmax=np.log10(NODATA_VARIANCE),
-)
 TAG = " (synthetic)"
 
-fig, axs = plt.subplots(2, 4, figsize=(17, 8.5))
+# log10(variance) on one shared scale; cells without information are grey.
+cmap = plt.get_cmap("viridis").copy()
+cmap.set_bad("lightgrey")
+log_kw = dict(origin="lower", extent=extent, cmap=cmap, vmin=-1, vmax=3.5)
+
+
+def no_info_masked(grid):
+    """log10 of a theme grid, masking the sentinel and +inf (no information)."""
+    return np.ma.masked_where(
+        ~np.isfinite(grid) | (grid >= NODATA_VARIANCE), np.log10(grid)
+    )
+
+
+fig, axs = plt.subplots(2, 5, figsize=(21, 8.5))
 
 ax = axs[0, 0]
 im = ax.imshow(terrain, origin="lower", extent=extent, cmap="terrain")
@@ -206,24 +247,44 @@ fig.colorbar(im, ax=ax, label="Elevation [m]")
 panels = [
     (axs[0, 1], themes["droneTEM"][:, :, 0], "droneTEM theme, layer 1"),
     (axs[0, 2], themes["boreholes"][:, :, 0], "Borehole theme, layer 1"),
-    (axs[0, 3], final[:, :, 0], "Combined + floor, layer 1"),
-    (axs[1, 0], final[:, :, 3], "Combined + floor, layer 4"),
-    (axs[1, 1], final[:, :, 7], "Combined + floor, layer 8"),
-    (axs[1, 2], final[:, :, n_layers - 1], f"Combined + floor, layer {n_layers}"),
+    (axs[0, 3], themes["model"][:, :, 0], "Model theme (prior), layer 1"),
+    (axs[1, 0], final[:, :, 0], "Combined + floor, layer 1"),
+    (axs[1, 1], final[:, :, 3], "Combined + floor, layer 4"),
+    (axs[1, 2], final[:, :, 7], "Combined + floor, layer 8"),
+    (axs[1, 3], final[:, :, n_layers - 1], f"Combined + floor, layer {n_layers}"),
 ]
 for ax, grid, title in panels:
-    im = ax.imshow(np.log10(grid), **log_kw)
+    im = ax.imshow(no_info_masked(grid), **log_kw)
     ax.set_title(title + TAG, fontsize=10)
     fig.colorbar(im, ax=ax, label="log10 variance [m²]")
 
-ax = axs[1, 3]
-ax.plot(np.arange(1, n_layers + 1), np.median(final, axis=(0, 1)), "o-")
+ax = axs[0, 4]
+layers = np.arange(1, n_layers + 1)
+ax.plot(layers, np.median(themes["model"], axis=(0, 1)), "s--", label="model theme")
+ax.plot(layers, np.median(final, axis=(0, 1)), "o-", label="combined + floor")
 ax.set_yscale("log")
 ax.set_xlabel("Layer")
 ax.set_ylabel("Median variance [m²]")
-ax.set_title("Median combined variance per layer" + TAG, fontsize=10)
+ax.set_title("Median variance per layer" + TAG, fontsize=10)
+ax.legend(fontsize=8)
 
-for ax in axs.ravel()[:-1]:
+ax = axs[1, 4]
+ax.axis("off")
+ax.text(
+    0,
+    0.5,
+    "Grey = no information from that source.\n\n"
+    "The model theme bounds the combined\n"
+    "variance, so every cell of the final\n"
+    "map carries a finite uncertainty.\n\n"
+    "Exported per layer:\n"
+    "  variance_NN.tif  (handoff to kriging)\n"
+    "  std_NN.tif       (std in m, for GIS)",
+    fontsize=10,
+    va="center",
+)
+
+for ax in [a for a in axs.ravel() if a not in (axs[0, 4], axs[1, 4])]:
     ax.set_xticks([])
     ax.set_yticks([])
 

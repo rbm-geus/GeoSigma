@@ -10,7 +10,9 @@ Run as ``python -m geosigma.themes <command>``.
 ``combine``
     Combine several per-layer theme variance folders into a single final
     variance stack: parallel-precision combine, then floor by the
-    depth-dependent minimum map from terrain + layer bottoms. This stage is
+    depth-dependent minimum map from terrain + layer bottoms. Writes the
+    handoff files (``variance_NN.tif``) and a GIS-ready standard-deviation
+    copy (``std_NN.tif``, no-information cells as no-data). This stage is
     fully model-agnostic (it only reads variance GeoTIFFs + surfaces), so it
     lives in the library CLI.
 
@@ -29,8 +31,8 @@ from pathlib import Path
 from utils import load_geotiff_grid
 from utils.grid_meta import grids_aligned
 
-from .combine import apply_floor, combine_variances, minimum_map
-from .io import read_variance_stack, write_variance_stack
+from .combine import apply_floor, combine_variances, informed_mask, minimum_map
+from .io import read_variance_stack, write_display_stack, write_variance_stack
 
 
 def _cmd_combine(args):
@@ -67,7 +69,17 @@ def _cmd_combine(args):
 
     floored = apply_floor(combined, minimum_map(terrain, bottoms))
     paths = write_variance_stack(floored, ref_meta, args.out, prefix=args.out_prefix)
-    print(f"Wrote {len(paths)} layer(s) to {Path(args.out).resolve()}")
+    write_display_stack(
+        floored,
+        ref_meta,
+        args.out,
+        informed=informed_mask(theme_stacks),
+        prefix=args.std_prefix,
+    )
+    print(
+        f"Wrote {len(paths)} layer(s) to {Path(args.out).resolve()} "
+        f"({args.out_prefix}_NN.tif + {args.std_prefix}_NN.tif)"
+    )
 
 
 def build_parser():
@@ -104,6 +116,11 @@ def build_parser():
         "--out-prefix",
         default="variance",
         help="output file prefix (default: variance)",
+    )
+    c.add_argument(
+        "--std-prefix",
+        default="std",
+        help="prefix of the GIS-ready standard-deviation files (default: std)",
     )
     c.set_defaults(func=_cmd_combine)
     return parser

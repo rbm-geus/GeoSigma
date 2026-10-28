@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from .base import NODATA_VARIANCE
+
 
 def combine_variances(themes):
     """Combine theme variance grids as parallel precisions.
@@ -54,6 +56,35 @@ def combine_variances(themes):
         precision = np.sum(1.0 / stack, axis=-1)
         combined = 1.0 / precision
     return combined
+
+
+def informed_mask(themes):
+    """Cells where at least one theme carries information.
+
+    A theme carries information at a cell when its variance there is finite and
+    below the :data:`~geosigma.themes.base.NODATA_VARIANCE` sentinel. ``NaN``,
+    ``+inf`` and the sentinel all mean "no information".
+
+    This is for **export only** (see :func:`geosigma.themes.io.write_display_stack`):
+    after :func:`combine_variances` "no information" is no longer a single value
+    (``N`` sentinel themes combine to ``NODATA_VARIANCE / N``), so it has to be
+    decided from the per-theme grids, before combining.
+
+    Parameters
+    ----------
+    themes : sequence of ndarray, each shape (ny, nx, n_layers)
+        The same per-theme grids passed to :func:`combine_variances`.
+
+    Returns
+    -------
+    ndarray of bool, shape (ny, nx, n_layers)
+    """
+    if len(themes) == 0:
+        raise ValueError("informed_mask requires at least one theme grid")
+    stack = np.stack([np.asarray(t, dtype=float) for t in themes], axis=-1)
+    with np.errstate(invalid="ignore"):
+        informative = np.isfinite(stack) & (stack < NODATA_VARIANCE)
+    return np.any(informative, axis=-1)
 
 
 def minimum_map(terrain, layer_bottoms):

@@ -100,7 +100,12 @@ a few seconds); it needs the `dev` extra: `pip install -e ".[dev]"`.
 The `examples/` directory contains standalone v0.1.0 scripts. They locate their
 data relative to the script file, so they run from any working directory.
 
-- `demo_variance_map.py`: **start here.** Runs the variance-map tool end to end: two synthetic information sources on the sample model → per-layer themes → combined, floored variance map → GeoTIFFs in `examples/output/demo_variance_map/`. The data points are synthetic and the theme specs are illustrative, not a calibrated uncertainty model.
+- `demo_variance_map.py`: **start here.** Runs the variance-map tool end to end: two synthetic information sources on the sample model, plus the model theme (the background variance) → per-layer themes → combined, floored variance map → GeoTIFFs in `examples/output/demo_variance_map/`. Each layer is written twice: `variance_NN.tif` is the handoff file for kriging, and `std_NN.tif` holds the standard deviation in metres for viewing in QGIS/ArcGIS. The data points are synthetic and the theme specs are illustrative, not a calibrated uncertainty model.
+
+  **Expected output**
+
+  ![Expected output of demo_variance_map.py: data locations, per-source themes, the model theme, and the combined variance for four layers](docs/images/demo_variance_map.png)
+
 - `demo_region_config.py`: describe a model's layers and surface files with a `RegionConfig`.
 - `demo_load_hydrostrat_model_geotiff.py`, `demo_load_jutland_hydrostrat_model.py`, `demo_load_hydrostrat_layer_geotiff.py`: load and plot the sample Jutland model (GeoTIFF).
 - `demo_load_funen_hydrostrat_model.py`: load a model supplied as ESRI ASCII grids (Funen).

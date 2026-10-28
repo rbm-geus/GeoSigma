@@ -22,7 +22,8 @@ Layout
 * :mod:`~geosigma.themes.model_theme` — the depth-dependent model-area floor.
 * :mod:`~geosigma.themes.combine` — parallel-precision combine, minimum-map floor,
   zero-thickness correlation map.
-* :mod:`~geosigma.themes.io` — the handoff format (folder of per-layer GeoTIFFs).
+* :mod:`~geosigma.themes.io` — the handoff format (folder of per-layer GeoTIFFs)
+  and a GIS-ready standard-deviation export.
 * ``python -m geosigma.themes combine ...`` — CLI for the combine stage.
 
 Model-agnostic boundary
@@ -68,10 +69,21 @@ from .spec_io import (
     load_spec,
     load_spec_yaml,
 )
-from .combine import apply_floor, combine_variances, corr_map, minimum_map
+from .combine import (
+    apply_floor,
+    combine_variances,
+    corr_map,
+    informed_mask,
+    minimum_map,
+)
 from .model_theme import model_theme
 from .well import WellSet, build_well_theme
-from .io import read_variance_stack, write_variance_stack
+from .io import (
+    DISPLAY_NODATA,
+    read_variance_stack,
+    write_display_stack,
+    write_variance_stack,
+)
 from .data_io import LoadedTheme, load_theme_data, resolve_theme_spec
 from . import themes
 
@@ -96,9 +108,12 @@ __all__ = [
     "minimum_map",
     "apply_floor",
     "corr_map",
+    "informed_mask",
     "model_theme",
     "read_variance_stack",
     "write_variance_stack",
+    "write_display_stack",
+    "DISPLAY_NODATA",
     "LoadedTheme",
     "load_theme_data",
     "resolve_theme_spec",
