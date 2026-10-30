@@ -11,6 +11,8 @@ pip install -e .                       # from the repository root; see Installat
 python examples/demo_variance_map.py   # builds per-layer variance maps end to end
 ```
 
+**In Spyder:** start Spyder from the `geosigma` environment, open the example file and press **F5** (don't type the file name in the console). Under *Run → Configuration per file*, choose **Run in dedicated console**.
+
 ## Release scope: v0.1.0 and v1.0.0
 
 GeoSigma is being built in two halves. **v0.1.0 contains only the first half, the variance-map tool.**
