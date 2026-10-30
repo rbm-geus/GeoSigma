@@ -31,9 +31,9 @@ combine like any other theme, the combined variance can never exceed it, so
 cells that no data source reaches get the model's own uncertainty instead of
 the no-information sentinel. Without it, those cells keep the sentinel
 (``100000``, or ``100000 / N`` once ``N`` sentinel themes are combined). The
-demo uses one uniform model-quality class and the fallback values of
-``geosigma.themes.model_theme``, which are calibrated to the Danish national
-model and are used here only for illustration. The model theme is passed to
+demo uses one uniform model-quality class and passes
+``class_fmin=DANISH_CLASS_FMIN`` explicitly: values calibrated to the Danish
+national model, borrowed here only for illustration. The model theme is passed to
 ``combine_variances`` as its required ``prior`` (choice 13 in
 ``docs/bring_your_own_data.md``).
 
@@ -55,6 +55,7 @@ import numpy as np
 
 from geosigma.config import RegionConfig
 from geosigma.themes import (
+    DANISH_CLASS_FMIN,
     NODATA_VARIANCE,
     ThemeData,
     apply_floor,
@@ -188,7 +189,11 @@ themes = {
 # Model theme = background variance (the prior for the model's quality). One
 # uniform quality class here; a real model would map its own quality classes.
 model_class = np.zeros(terrain.shape, dtype=int)
-themes["model"] = model_theme(model_class, terrain, bottom_stack)
+# The class values must be chosen explicitly; this demo borrows the Danish
+# calibration for illustration (class 0 -> f_min 20).
+themes["model"] = model_theme(
+    model_class, terrain, bottom_stack, class_fmin=DANISH_CLASS_FMIN
+)
 
 data_themes = [themes["droneTEM"], themes["boreholes"]]
 # `prior` is required: the model theme is the background the data refine.

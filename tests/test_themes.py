@@ -24,6 +24,7 @@ import numpy as np
 import pytest
 
 from geosigma.themes import (
+    DANISH_CLASS_FMIN,
     GeoSigmaWarning,
     NODATA_VARIANCE,
     ThemeData,
@@ -175,13 +176,33 @@ def test_corr_map_stamps_zero_thickness_wells():
 
 
 def test_model_theme_depth_ramp():
-    # Single class, single layer; depth 100 m, default gradients/fmin.
+    # Single class, single layer; depth 100 m, Danish fmin + default gradients.
     class_grid = np.zeros((1, 1), dtype=int)  # class 0 -> fmin 20
     terrain = np.array([[100.0]])
     bottom = np.array([[0.0]])
-    theme = model_theme(class_grid, terrain, [bottom])
+    theme = model_theme(class_grid, terrain, [bottom], class_fmin=DANISH_CLASS_FMIN)
     # depth 100 >= 50: ramp = 0.15*100 + (0.3-0.15)*50 + 20 = 42.5; var = (0.5*42.5)^2
     assert theme[0, 0, 0] == pytest.approx((0.5 * 42.5) ** 2)
+
+
+def test_model_theme_requires_explicit_class_fmin():
+    class_grid = np.zeros((1, 1), dtype=int)
+    terrain, bottom = np.array([[100.0]]), np.array([[0.0]])
+    with pytest.raises(TypeError):
+        model_theme(class_grid, terrain, [bottom])
+    with pytest.raises(TypeError):  # keyword-only
+        model_theme(class_grid, terrain, [bottom], DANISH_CLASS_FMIN)
+    for empty in (None, {}):
+        with pytest.raises(ValueError, match="DANISH_CLASS_FMIN"):
+            model_theme(class_grid, terrain, [bottom], class_fmin=empty)
+
+
+def test_model_theme_uses_the_given_class_values():
+    class_grid = np.array([[0, 1]])
+    terrain, bottom = np.full((1, 2), 10.0), np.zeros((1, 2))
+    theme = model_theme(class_grid, terrain, [bottom], class_fmin={0: 4.0, 1: 8.0})
+    # depth 10 < 50: ramp = 0.3*10 + fmin
+    np.testing.assert_allclose(theme[0, :, 0], [(0.5 * 7.0) ** 2, (0.5 * 11.0) ** 2])
 
 
 # ---------------------------------------------------------------------------

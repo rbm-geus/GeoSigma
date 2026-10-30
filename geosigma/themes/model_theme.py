@@ -27,8 +27,10 @@ from __future__ import annotations
 
 import numpy as np
 
-#: Default surface minimum-variance roots per class (MATLAB Jylland f0..f5).
-DEFAULT_CLASS_FMIN = {0: 20.0, 1: 20.0, 2: 12.5, 3: 12.5, 4: 11.25, 5: 10.0}
+#: Surface minimum-variance roots per class, **calibrated to the Danish national
+#: model** (MATLAB Jylland f0..f5). Not a default: pass it explicitly as
+#: ``class_fmin=DANISH_CLASS_FMIN`` only if you mean to use the Danish values.
+DANISH_CLASS_FMIN = {0: 20.0, 1: 20.0, 2: 12.5, 3: 12.5, 4: 11.25, 5: 10.0}
 
 #: Default depth ramp gradients (MATLAB ``grad_less50`` / ``grad_abv50``).
 DEFAULT_GRAD_LESS50 = 0.3
@@ -47,7 +49,8 @@ def model_theme(
     class_grid,
     terrain,
     layer_bottoms,
-    class_fmin=None,
+    *,
+    class_fmin,
     grad_less50=DEFAULT_GRAD_LESS50,
     grad_abv50=DEFAULT_GRAD_ABV50,
 ):
@@ -61,10 +64,13 @@ def model_theme(
         Terrain / top-surface elevation.
     layer_bottoms : sequence of ndarray (ny, nx), or ndarray (ny, nx, n_layers)
         Layer bottom-surface elevations.
-    class_fmin : mapping of int -> float, optional
-        Surface minimum-variance root per class; defaults to
-        :data:`DEFAULT_CLASS_FMIN`. Classes absent from the mapping keep variance
-        ``0`` (matching the MATLAB ``modeltheme = modeltheme2*0`` initialisation).
+    class_fmin : mapping of int -> float
+        **Required, keyword-only.** Surface minimum-variance root per class: your
+        model's background uncertainty at the surface, per quality class. There
+        is no default. :data:`DANISH_CLASS_FMIN` holds the values calibrated to
+        the Danish national model; pass it explicitly only if you mean to use
+        them. Classes absent from the mapping keep variance ``0`` (matching the
+        MATLAB ``modeltheme = modeltheme2*0`` initialisation).
     grad_less50, grad_abv50 : float
         Depth-ramp gradients above / below 50 m.
 
@@ -79,8 +85,11 @@ def model_theme(
     else:
         bottoms = np.stack([np.asarray(b, dtype=float) for b in layer_bottoms], axis=-1)
     n_layers = bottoms.shape[2]
-    if class_fmin is None:
-        class_fmin = DEFAULT_CLASS_FMIN
+    if class_fmin is None or len(class_fmin) == 0:
+        raise ValueError(
+            "class_fmin must map each model-quality class to its surface value; "
+            "pass class_fmin=DANISH_CLASS_FMIN to use the Danish calibration"
+        )
 
     theme = np.zeros((*class_grid.shape, n_layers))
     for s in range(n_layers):

@@ -494,9 +494,11 @@ prior.
 `--prior DIR` / `--no-prior` on the command line). It takes a
 `(ny, nx, n_layers)` variance grid, in one of two forms:
 
-- a **model theme**, `model_theme(class_grid, terrain, layer_bottoms, ...)`: a
+- a **model theme**,
+  `model_theme(class_grid, terrain, layer_bottoms, class_fmin={...})`: a
   background variance per layer that grows with depth and can differ between
-  parts of the model (quality classes);
+  parts of the model (quality classes). `class_fmin` maps each quality class to
+  its surface value and is required: there is no built-in default;
 - at minimum, a **constant background variance per layer**,
   `constant_prior(variance_per_layer, shape)`: the same variance at every cell of
   a layer.
@@ -564,8 +566,11 @@ justification. The Danish model uses a model theme (`get_modeltheme.m` in the
 reference implementation): each cell belongs to one of six model-quality classes,
 each class sets a surface value `f_min` between 10 and 20 m, and the value grows
 by 0.3 m per metre of depth down to 50 m and by 0.15 m per metre below; the
-variance is `(0.5 · ramp)²`. These Danish numbers are what
-`geosigma.themes.model_theme` uses when you pass no class values of your own.
+variance is `(0.5 · ramp)²`. The class values are available as
+`geosigma.themes.DANISH_CLASS_FMIN`, but `model_theme` never uses them unless
+you pass `class_fmin=DANISH_CLASS_FMIN` yourself. (The two depth gradients are
+also the Danish values; they are the defaults of `grad_less50` and
+`grad_abv50`.)
 The model theme is always part of the Danish combination, so inside the
 modelled area the final variance map is bounded by it.
 

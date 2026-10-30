@@ -78,7 +78,7 @@ from .combine import (
     informed_mask,
     minimum_map,
 )
-from .model_theme import model_theme
+from .model_theme import DANISH_CLASS_FMIN, model_theme
 from .well import WellSet, build_well_theme
 from .io import (
     DISPLAY_NODATA,
@@ -114,6 +114,7 @@ __all__ = [
     "corr_map",
     "informed_mask",
     "model_theme",
+    "DANISH_CLASS_FMIN",
     "read_variance_stack",
     "write_variance_stack",
     "write_display_stack",
