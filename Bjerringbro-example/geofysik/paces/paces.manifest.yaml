@@ -1,0 +1,26 @@
+format_version: 1
+name: paces
+spec: paces
+points_csv: paces_points.csv
+n_layers: 15
+crs: EPSG:25832
+x_column: x
+y_column: y
+attributes:
+  depth:
+    per_layer: true
+    prefix: depth__L
+  thick:
+    per_layer: true
+    prefix: thick__L
+  doi:
+    per_layer: false
+    column: doi
+complexity: none
+_notes:
+  source: "GERDA export bjerringbro_geofysik.fdb"
+  filtering: "inside model grid; de-duplicated on (x, y) keeping last; 18457 -> 2800 soundings"
+  attribute_columns:
+    depth: "hydrostratigraphic boundary depth below model terrain, sampled from region_config.json"
+    thick: "thickness of the GERDA resistivity layer containing the boundary; NaN = half-space"
+    doi: "GERDA doi (raw, NaN preserved)"
