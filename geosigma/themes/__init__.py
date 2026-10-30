@@ -70,8 +70,10 @@ from .spec_io import (
     load_spec_yaml,
 )
 from .combine import (
+    GeoSigmaWarning,
     apply_floor,
     combine_variances,
+    constant_prior,
     corr_map,
     informed_mask,
     minimum_map,
@@ -105,6 +107,8 @@ __all__ = [
     "available_certainty_functions",
     "register_certainty_function",
     "combine_variances",
+    "constant_prior",
+    "GeoSigmaWarning",
     "minimum_map",
     "apply_floor",
     "corr_map",

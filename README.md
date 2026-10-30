@@ -127,7 +127,7 @@ Example data (sample Jutland and Funen hydrostratigraphic models) is included in
 ## Documentation
 
 - [`docs/theme_format.md`](docs/theme_format.md) — the ThemeData three-file format: the portable, model-agnostic bundle (points CSV, manifest, optional complexity grid) in which a theme's input data are supplied and archived.
-- [`docs/bring_your_own_data.md`](docs/bring_your_own_data.md) — the scientific-choices guide: the twelve modelling decisions behind a theme, how to reason about each for your own region and data, and a complete worked example.
+- [`docs/bring_your_own_data.md`](docs/bring_your_own_data.md) — the scientific-choices guide: the thirteen modelling decisions behind a theme and its combination (including the model's background variance), how to reason about each for your own region and data, and a complete worked example.
 
 ## Background
 

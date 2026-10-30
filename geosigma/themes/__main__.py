@@ -10,7 +10,9 @@ Run as ``python -m geosigma.themes <command>``.
 ``combine``
     Combine several per-layer theme variance folders into a single final
     variance stack: parallel-precision combine, then floor by the
-    depth-dependent minimum map from terrain + layer bottoms. Writes the
+    depth-dependent minimum map from terrain + layer bottoms. The model's
+    background variance must be chosen explicitly: ``--prior DIR`` (a
+    model-theme folder, combined as the prior) or ``--no-prior``. Writes the
     handoff files (``variance_NN.tif``) and a GIS-ready standard-deviation
     copy (``std_NN.tif``, no-information cells as no-data). This stage is
     fully model-agnostic (it only reads variance GeoTIFFs + surfaces), so it
@@ -48,7 +50,13 @@ def _cmd_combine(args):
             )
         theme_stacks.append(stack)
 
-    combined = combine_variances(theme_stacks)
+    prior = None
+    if args.prior is not None:
+        prior, p_meta = read_variance_stack(args.prior, prefix=args.prefix)
+        if not grids_aligned(p_meta, ref_meta):
+            raise SystemExit("prior folder is not grid-aligned with the theme grids")
+
+    combined = combine_variances(theme_stacks, prior=prior)
 
     terrain, t_meta = load_geotiff_grid(args.terrain)
     if not grids_aligned(t_meta, ref_meta):
@@ -73,7 +81,7 @@ def _cmd_combine(args):
         floored,
         ref_meta,
         args.out,
-        informed=informed_mask(theme_stacks),
+        informed=informed_mask(theme_stacks + ([] if prior is None else [prior])),
         prefix=args.std_prefix,
     )
     print(
@@ -95,6 +103,18 @@ def build_parser():
         required=True,
         metavar="DIR",
         help="a per-layer theme variance folder (repeatable)",
+    )
+    background = c.add_mutually_exclusive_group(required=True)
+    background.add_argument(
+        "--prior",
+        metavar="DIR",
+        help="model-theme (background variance) folder, combined as the prior",
+    )
+    background.add_argument(
+        "--no-prior",
+        action="store_true",
+        help="combine without a background variance (warns where cells are "
+        "informed by no theme)",
     )
     c.add_argument("--terrain", required=True, help="terrain / top-surface GeoTIFF")
     c.add_argument(

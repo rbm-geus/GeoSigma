@@ -13,18 +13,23 @@ This document is the practitioner's guide to configuring a theme for your own
 region and data. It is organised around the **distinct scientific choices** a
 theme author must make. Each is a question that different geology or a different
 data type could reasonably answer differently; none is an implementation detail.
-There are twelve, in two groups:
+There are thirteen, in three groups:
 
 - **Part A — choices expressed in the `ThemeSpec`** (eight). The spec is a plain
   dataclass; these are its fields and the formulae it carries.
 - **Part B — choices in the per-point preparation layer** (four). These are made
   *before* the spec is applied, when a raw source is turned into the point cloud
   and attributes the engine consumes.
+- **Part C — the choice made at combination** (one). How uncertain the model is
+  where no data say anything: the background variance (`prior`) that every
+  combined variance map needs.
 
 For each choice you get: the **question** in plain terms, the **parameter(s)**
 that express the answer, **how to reason about it** for your own setting, and the
-**Danish answers** as worked illustrations. The Danish values come from the
-national hydrostratigraphic model (the DK-model); their scientific justification
+**Danish answers** as worked illustrations. The Danish values are **calibrated to
+the Danish national hydrostratigraphic model** (the DK-model). They are examples
+of reasoning, not defaults: do not reuse them for another model without your own
+justification. Their scientific justification
 is the subject of a forthcoming publication — cited below as
 **[methods citation]** (placeholder, to be filled on publication).
 
@@ -472,6 +477,100 @@ than reading a per-sounding value.
 
 ---
 
+# Part C — the choice made at combination
+
+Parts A and B configure one information source at a time. One choice belongs to
+none of them, because it is about the model rather than about any source, and it
+is made once, when the themes are combined.
+
+## Choice 13 — How uncertain is the model where no data say anything?
+
+**Question.** Away from every data source, how far could each layer boundary of
+the model plausibly be from where the model puts it? This is the uncertainty of
+the model itself before any data are considered: its background variance, or
+prior.
+
+**Parameter.** The required `prior` argument of `combine_variances` (and
+`--prior DIR` / `--no-prior` on the command line). It takes a
+`(ny, nx, n_layers)` variance grid, in one of two forms:
+
+- a **model theme**, `model_theme(class_grid, terrain, layer_bottoms, ...)`: a
+  background variance per layer that grows with depth and can differ between
+  parts of the model (quality classes);
+- at minimum, a **constant background variance per layer**,
+  `constant_prior(variance_per_layer, shape)`: the same variance at every cell of
+  a layer.
+
+`prior=None` is accepted, but it has to be written out: it states that the model
+has no background uncertainty you are willing to put a number on.
+`combine_variances` then warns (`GeoSigmaWarning`) wherever a cell is informed by
+no theme, because those cells keep a value derived from the no-information
+sentinel (`100000`, or `100000 / N` once `N` sentinel themes are combined; see
+*Two kinds of "no information"* under choice 7). That value is an artefact, not a
+variance, and it ruins every colour scale and every downstream use.
+
+**Reasoning for your setting.** Ask what you would say about a boundary's depth
+in a corner of the model with no boreholes and no geophysics. You still know
+something: the model exists, it was built from regional geology and
+interpretation, and its deeper boundaries are less certain than its shallower
+ones. That knowledge is the prior. Typical inputs to the decision:
+
+- **Depth.** Uncertainty almost always grows with depth below terrain, which is
+  why a model theme ramps the variance with depth rather than holding it
+  constant.
+- **Model quality.** If parts of the model were built more carefully, or from
+  better regional data, give them a lower background variance (separate quality
+  classes in `class_grid`).
+- **Scale.** Express the answer as a standard deviation in metres first ("this
+  boundary could be ±15 m off here"), then square it; a variance is hard to judge
+  by eye.
+
+A constant per layer is the minimal honest answer when you cannot justify more
+structure:
+
+```python
+import numpy as np
+from geosigma.themes import combine_variances, constant_prior
+
+# Background standard deviation per layer boundary [m], shallow to deep.
+background_std = np.array([5.0, 10.0, 20.0])
+prior = constant_prior(background_std**2, shape=(ny, nx))
+
+final_variance = combine_variances(theme_grids, prior=prior)
+```
+
+**Prior versus hard bound.** It is tempting to get the same effect by clipping:
+`np.minimum(combined, cap)`. The two are not the same.
+
+| | Prior (model theme or `constant_prior`) | Hard bound (clipping) |
+|---|---|---|
+| How it enters | One more term in the precision sum: `1 / (Σ 1/θ + 1/σ²_prior)` | Applied after combining: `min(combined, cap)` |
+| Upper limit | Automatic: the result can never exceed the prior | Exactly `cap`, by construction |
+| Where data exist | Refines them slightly, as one more independent piece of information | Leaves them untouched |
+| Where data are weak | Blends smoothly from data-dominated to prior-dominated | Abrupt kink where the combined value crosses `cap` |
+| What it claims | That the model itself is information, with a stated uncertainty | Nothing; it only hides large values |
+
+The prior is the statistically consistent choice: it is the same precision
+addition that combines the themes (see the design invariant in Part A), applied
+to one more source, namely the model. Clipping adds no information, says nothing
+about how certain the model actually is, and introduces a discontinuity the
+kriging stage cannot account for. GeoSigma therefore offers the prior and not
+the clip.
+
+**Danish model, for illustration only [methods citation].** The values below are
+**calibrated to the Danish national hydrostratigraphic model**. They are not
+defaults and should not be copied to another model without your own
+justification. The Danish model uses a model theme (`get_modeltheme.m` in the
+reference implementation): each cell belongs to one of six model-quality classes,
+each class sets a surface value `f_min` between 10 and 20 m, and the value grows
+by 0.3 m per metre of depth down to 50 m and by 0.15 m per metre below; the
+variance is `(0.5 · ramp)²`. These Danish numbers are what
+`geosigma.themes.model_theme` uses when you pass no class values of your own.
+The model theme is always part of the Danish combination, so inside the
+modelled area the final variance map is bounded by it.
+
+---
+
 # A complete worked example
 
 To show the whole path start to finish, here is a **fictional, non-Danish** theme:
@@ -481,7 +580,7 @@ an alluvial basin. Each sounding reports an interpreted bedrock depth and a
 depth-of-investigation analogue. Bedrock is a single deepening surface, so we treat
 every modelled layer the same and use no complexity grid.
 
-We make each of the twelve choices explicitly.
+We make each of the thirteen choices explicitly.
 
 ```python
 import numpy as np
@@ -617,6 +716,23 @@ the three-file format specified in [`theme_format.md`](theme_format.md):
   and its `max_resolved_depth` to `spread_reach`; no fixed overrides.
 
 That is a complete theme: eight spec choices in Python, four preparation choices in
-the adapter, and a variance map out of `build_theme` — with no weighting anywhere,
-because each theme's honesty about its own uncertainty is what the combination
-needs (see the design invariant in Part A).
+the adapter, and a variance map out of `build_theme`.
+
+The last choice is made when combining. Here the refraction survey is the only
+theme, and the basin model's own uncertainty (**choice 13**) is stated as a
+constant background standard deviation per boundary: 8, 15 and 25 m, deepening
+with the boundaries.
+
+```python
+from geosigma.themes import combine_variances, constant_prior
+
+prior = constant_prior(np.array([8.0, 15.0, 25.0]) ** 2, shape=grid.shape[:2])
+final = combine_variances([grid], prior=prior)
+```
+
+Every cell of `final` now carries a finite variance no larger than the prior:
+close to the refraction picks it is set by the survey, and far from them it
+relaxes to the basin model's own uncertainty. There is no weighting anywhere,
+because each theme's honesty about its own uncertainty, and the model's honesty
+about its own, is what the combination needs (see the design invariant in
+Part A).

@@ -24,6 +24,7 @@ import numpy as np
 import pytest
 
 from geosigma.themes import (
+    GeoSigmaWarning,
     NODATA_VARIANCE,
     ThemeData,
     apply_floor,
@@ -52,6 +53,7 @@ def restore_cert_registry():
     finally:
         cf._CERT_FUNCTIONS.clear()
         cf._CERT_FUNCTIONS.update(saved)
+
 
 # ---------------------------------------------------------------------------
 # Certainty kernels
@@ -136,13 +138,13 @@ def test_combine_parallel_precision():
     a = np.full((2, 2, 1), 4.0)
     b = np.full((2, 2, 1), 4.0)
     # 1 / (1/4 + 1/4) = 2
-    assert np.allclose(combine_variances([a, b]), 2.0)
+    assert np.allclose(combine_variances([a, b], prior=None), 2.0)
 
 
 def test_combine_ignores_infinite_theme():
     a = np.full((3, 3, 2), 5.0)
     b = np.full((3, 3, 2), np.inf)  # no information -> contributes nothing
-    assert np.allclose(combine_variances([a, b]), 5.0)
+    assert np.allclose(combine_variances([a, b], prior=None), 5.0)
 
 
 def test_minimum_map_and_floor():
@@ -387,8 +389,8 @@ def _first_reducer_case():
     ys = np.array([40.0, 200.0])
     attributes = {
         "depth": np.array([[50.0, 50.0], [10.0, 10.0]]),
-        "doi": np.array([200.0, 200.0]),     # never masks (doi > depth)
-        "mep_type": np.array([1.0, 0.0]),    # first=wenner, nearest=not-wenner
+        "doi": np.array([200.0, 200.0]),  # never masks (doi > depth)
+        "mep_type": np.array([1.0, 0.0]),  # first=wenner, nearest=not-wenner
     }
     return grid_x, grid_y, xs, ys, attributes, n_layers
 
@@ -410,8 +412,14 @@ def test_first_reducer_matches_naive_and_picks_window_first():
     assert fast["mep_type"][2, 2, 0] == 1.0
     # ...whereas a tie-set reducer would pick the nearest point (type 0).
     _, near = windowed_nearest(
-        xs, ys, grid_x, grid_y, 2,
-        {"mep_type": attributes["mep_type"]}, {"mep_type": "mean"}, n_layers,
+        xs,
+        ys,
+        grid_x,
+        grid_y,
+        2,
+        {"mep_type": attributes["mep_type"]},
+        {"mep_type": "mean"},
+        n_layers,
     )
     assert near["mep_type"][2, 2, 0] == 0.0
 
@@ -423,20 +431,34 @@ def test_mep_var0_depends_on_acquisition_type():
     spec = theme_specs.mep_spec(n_prereq=1, doi_fill=50.0)
 
     g_w = build_theme(
-        ThemeData(xs=xs, ys=ys,
-                  attributes={**attributes, "mep_type": np.array([1.0, 1.0])},
-                  complexity=complexity),
-        spec, grid_x, grid_y, n_layers,
+        ThemeData(
+            xs=xs,
+            ys=ys,
+            attributes={**attributes, "mep_type": np.array([1.0, 1.0])},
+            complexity=complexity,
+        ),
+        spec,
+        grid_x,
+        grid_y,
+        n_layers,
     )
     g_n = build_theme(
-        ThemeData(xs=xs, ys=ys,
-                  attributes={**attributes, "mep_type": np.array([0.0, 0.0])},
-                  complexity=complexity),
-        spec, grid_x, grid_y, n_layers,
+        ThemeData(
+            xs=xs,
+            ys=ys,
+            attributes={**attributes, "mep_type": np.array([0.0, 0.0])},
+            complexity=complexity,
+        ),
+        spec,
+        grid_x,
+        grid_y,
+        n_layers,
     )
     informative = (
-        (g_w < NODATA_VARIANCE) & np.isfinite(g_w)
-        & (g_n < NODATA_VARIANCE) & np.isfinite(g_n)
+        (g_w < NODATA_VARIANCE)
+        & np.isfinite(g_w)
+        & (g_n < NODATA_VARIANCE)
+        & np.isfinite(g_n)
     )
     assert informative.any()
     assert not np.allclose(g_w[informative], g_n[informative])
@@ -462,7 +484,7 @@ def test_pacep_doi_fill_after_reduction():
     ys = np.array([100.0])
     attributes = {
         "depth": np.array([[10.0]]),
-        "doi": np.array([np.nan]),   # missing -> filled with 15 after reduction
+        "doi": np.array([np.nan]),  # missing -> filled with 15 after reduction
     }
     complexity = np.full((3, 3), 2.0)
     spec = theme_specs.pacep_spec(n_prereq=1)
@@ -479,9 +501,13 @@ def test_missing_complexity_defaults_to_uniform_class_one():
         ThemeData(xs=xs, ys=ys, attributes=attributes), spec, grid_x, grid_y, n_layers
     )
     g_one = build_theme(
-        ThemeData(xs=xs, ys=ys, attributes=attributes,
-                  complexity=np.ones_like(complexity)),
-        spec, grid_x, grid_y, n_layers,
+        ThemeData(
+            xs=xs, ys=ys, attributes=attributes, complexity=np.ones_like(complexity)
+        ),
+        spec,
+        grid_x,
+        grid_y,
+        n_layers,
     )
     np.testing.assert_array_equal(g_none, g_one)
 
@@ -511,5 +537,8 @@ def test_build_theme_golden():
             theme_specs.ttem_spec(n_prereq=2),
         ]
     }
-    final = combine_variances(list(grids.values()))
+    # prior=None keeps the golden combine unchanged; cells no theme informs
+    # trigger the (expected) GeoSigmaWarning.
+    with pytest.warns(GeoSigmaWarning):
+        final = combine_variances(list(grids.values()), prior=None)
     assert_matches_golden("themes_synthetic", **grids, combined=final)

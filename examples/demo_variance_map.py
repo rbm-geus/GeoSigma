@@ -31,8 +31,11 @@ combine like any other theme, the combined variance can never exceed it, so
 cells that no data source reaches get the model's own uncertainty instead of
 the no-information sentinel. Without it, those cells keep the sentinel
 (``100000``, or ``100000 / N`` once ``N`` sentinel themes are combined). The
-demo uses one uniform model-quality class and the default depth ramp of
-``geosigma.themes.model_theme``.
+demo uses one uniform model-quality class and the fallback values of
+``geosigma.themes.model_theme``, which are calibrated to the Danish national
+model and are used here only for illustration. The model theme is passed to
+``combine_variances`` as its required ``prior`` (choice 13 in
+``docs/bring_your_own_data.md``).
 
 .. important::
    **The data are synthetic and the specs are illustrative.** The data points
@@ -187,8 +190,9 @@ themes = {
 model_class = np.zeros(terrain.shape, dtype=int)
 themes["model"] = model_theme(model_class, terrain, bottom_stack)
 
-all_themes = list(themes.values())
-combined = combine_variances(all_themes)
+data_themes = [themes["droneTEM"], themes["boreholes"]]
+# `prior` is required: the model theme is the background the data refine.
+combined = combine_variances(data_themes, prior=themes["model"])
 final = apply_floor(combined, minimum_map(terrain, bottom_stack))
 
 for name, grid in themes.items():
@@ -208,7 +212,7 @@ write_display_stack(
     np.flip(final, axis=0),
     meta,
     OUT_DIR,
-    informed=np.flip(informed_mask(all_themes), axis=0),
+    informed=np.flip(informed_mask(data_themes + [themes["model"]]), axis=0),
 )
 print(f"Wrote {len(paths)} layers to {OUT_DIR}:")
 print("  variance_NN.tif  handoff format for kriging (variance, sentinel kept)")
