@@ -32,8 +32,9 @@ cells that no data source reaches get the model's own uncertainty instead of
 the no-information sentinel. Without it, those cells keep the sentinel
 (``100000``, or ``100000 / N`` once ``N`` sentinel themes are combined). The
 demo uses one uniform model-quality class and passes
-``class_fmin=DANISH_CLASS_FMIN`` explicitly: values calibrated to the Danish
-national model, borrowed here only for illustration. The model theme is passed to
+``class_fmin=DANISH_CLASS_FMIN`` and ``depth_ramp=DANISH_DEPTH_RAMP``
+explicitly: values calibrated to the Danish national model, borrowed here only
+for illustration. The model theme is passed to
 ``combine_variances`` as its required ``prior`` (choice 13 in
 ``docs/bring_your_own_data.md``).
 
@@ -56,6 +57,7 @@ import numpy as np
 from geosigma.config import RegionConfig
 from geosigma.themes import (
     DANISH_CLASS_FMIN,
+    DANISH_DEPTH_RAMP,
     NODATA_VARIANCE,
     ThemeData,
     apply_floor,
@@ -189,10 +191,15 @@ themes = {
 # Model theme = background variance (the prior for the model's quality). One
 # uniform quality class here; a real model would map its own quality classes.
 model_class = np.zeros(terrain.shape, dtype=int)
-# The class values must be chosen explicitly; this demo borrows the Danish
-# calibration for illustration (class 0 -> f_min 20).
+# The class values and the depth ramp must be chosen explicitly; this demo
+# borrows the Danish calibration for illustration (class 0 -> f_min 20; break at
+# 50 m, gradients 0.3 above and 0.15 below it).
 themes["model"] = model_theme(
-    model_class, terrain, bottom_stack, class_fmin=DANISH_CLASS_FMIN
+    model_class,
+    terrain,
+    bottom_stack,
+    class_fmin=DANISH_CLASS_FMIN,
+    depth_ramp=DANISH_DEPTH_RAMP,
 )
 
 data_themes = [themes["droneTEM"], themes["boreholes"]]

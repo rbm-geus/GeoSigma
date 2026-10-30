@@ -25,6 +25,7 @@ import pytest
 
 from geosigma.themes import (
     DANISH_CLASS_FMIN,
+    DANISH_DEPTH_RAMP,
     GeoSigmaWarning,
     NODATA_VARIANCE,
     ThemeData,
@@ -176,11 +177,17 @@ def test_corr_map_stamps_zero_thickness_wells():
 
 
 def test_model_theme_depth_ramp():
-    # Single class, single layer; depth 100 m, Danish fmin + default gradients.
+    # Single class, single layer; depth 100 m, Danish fmin + Danish depth ramp.
     class_grid = np.zeros((1, 1), dtype=int)  # class 0 -> fmin 20
     terrain = np.array([[100.0]])
     bottom = np.array([[0.0]])
-    theme = model_theme(class_grid, terrain, [bottom], class_fmin=DANISH_CLASS_FMIN)
+    theme = model_theme(
+        class_grid,
+        terrain,
+        [bottom],
+        class_fmin=DANISH_CLASS_FMIN,
+        depth_ramp=DANISH_DEPTH_RAMP,
+    )
     # depth 100 >= 50: ramp = 0.15*100 + (0.3-0.15)*50 + 20 = 42.5; var = (0.5*42.5)^2
     assert theme[0, 0, 0] == pytest.approx((0.5 * 42.5) ** 2)
 
@@ -188,21 +195,69 @@ def test_model_theme_depth_ramp():
 def test_model_theme_requires_explicit_class_fmin():
     class_grid = np.zeros((1, 1), dtype=int)
     terrain, bottom = np.array([[100.0]]), np.array([[0.0]])
+    ramp = DANISH_DEPTH_RAMP
     with pytest.raises(TypeError):
-        model_theme(class_grid, terrain, [bottom])
+        model_theme(class_grid, terrain, [bottom], depth_ramp=ramp)
     with pytest.raises(TypeError):  # keyword-only
-        model_theme(class_grid, terrain, [bottom], DANISH_CLASS_FMIN)
+        model_theme(class_grid, terrain, [bottom], DANISH_CLASS_FMIN, ramp)
     for empty in (None, {}):
         with pytest.raises(ValueError, match="DANISH_CLASS_FMIN"):
-            model_theme(class_grid, terrain, [bottom], class_fmin=empty)
+            model_theme(
+                class_grid, terrain, [bottom], class_fmin=empty, depth_ramp=ramp
+            )
+
+
+def test_model_theme_requires_explicit_depth_ramp():
+    class_grid = np.zeros((1, 1), dtype=int)
+    terrain, bottom = np.array([[100.0]]), np.array([[0.0]])
+    fmin = DANISH_CLASS_FMIN
+    with pytest.raises(TypeError):
+        model_theme(class_grid, terrain, [bottom], class_fmin=fmin)
+    bad_ramps = [
+        None,
+        {},
+        {"break_depth": 50.0, "shallow_gradient": 0.3},  # missing key
+        dict(DANISH_DEPTH_RAMP, grad_abv50=0.15),  # unknown key
+        dict(DANISH_DEPTH_RAMP, deep_gradient=np.nan),
+        dict(DANISH_DEPTH_RAMP, break_depth=-1.0),
+    ]
+    for bad in bad_ramps:
+        with pytest.raises(ValueError, match="depth_ramp"):
+            model_theme(class_grid, terrain, [bottom], class_fmin=fmin, depth_ramp=bad)
 
 
 def test_model_theme_uses_the_given_class_values():
     class_grid = np.array([[0, 1]])
     terrain, bottom = np.full((1, 2), 10.0), np.zeros((1, 2))
-    theme = model_theme(class_grid, terrain, [bottom], class_fmin={0: 4.0, 1: 8.0})
+    theme = model_theme(
+        class_grid,
+        terrain,
+        [bottom],
+        class_fmin={0: 4.0, 1: 8.0},
+        depth_ramp=DANISH_DEPTH_RAMP,
+    )
     # depth 10 < 50: ramp = 0.3*10 + fmin
     np.testing.assert_allclose(theme[0, :, 0], [(0.5 * 7.0) ** 2, (0.5 * 11.0) ** 2])
+
+
+@pytest.mark.parametrize(
+    "depth, expected_ramp",
+    [
+        (10.0, 0.5 * 10.0 + 2.0),  # shallower than the break
+        (20.0, 0.5 * 20.0 + 2.0),  # at the break: deep segment, continuous
+        (60.0, 0.1 * 60.0 + (0.5 - 0.1) * 20.0 + 2.0),  # deeper than the break
+    ],
+)
+def test_model_theme_custom_depth_ramp(depth, expected_ramp):
+    ramp = {"break_depth": 20.0, "shallow_gradient": 0.5, "deep_gradient": 0.1}
+    theme = model_theme(
+        np.zeros((1, 1), dtype=int),
+        np.array([[depth]]),
+        [np.zeros((1, 1))],
+        class_fmin={0: 2.0},
+        depth_ramp=ramp,
+    )
+    assert theme[0, 0, 0] == pytest.approx((0.5 * expected_ramp) ** 2)
 
 
 # ---------------------------------------------------------------------------
