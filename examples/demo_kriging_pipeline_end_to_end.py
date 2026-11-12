@@ -87,7 +87,7 @@ z_full_1, meta = load_geotiff_grid(
 )
 
 z_full_2, meta = load_geotiff_grid(
-    "data/Jutland_hydrostrat_model/layer_2_bottom.tif"
+    "data/Jutland_hydrostrat_model/layer_1_bottom.tif"
 )
 
 dx = float(meta["cellsize"])
@@ -254,12 +254,6 @@ estimator = load_default_rangesill_estimator()
 # %% -------------------------------------------------
 # 2-5. Run both layers, independently
 # -------------------------------------------------
-# Layer 2 is the same cutout LAYER_THICK metres lower. Taking a copy of a
-# real surface rather than inventing a second one keeps the geology
-# plausible, and a constant offset makes the crossings in step 6 easy to
-# reason about: any cell where the two kriged boundaries end up less than
-# LAYER_THICK apart is purely the two independent simulations disagreeing.
-LAYER_THICK = 4.0
 
 layer1 = run_layer(surface1, "layer 1", SEED)
 layer2 = run_layer(surface2, "layer 2", SEED + 100)
@@ -276,10 +270,10 @@ abs_reals = layer1.abs_reals
 # %% -------------------------------------------------
 # Figure 1: the whole chain
 # -------------------------------------------------
-vmin, vmax = float(surface.min()), float(surface.max())
+vmin, vmax = float(surface1.min()), float(surface1.max())
 fig, axes = plt.subplots(2, 4, figsize=(15, 5))
 
-im = axes[0, 0].imshow(surface, cmap="viridis", vmin=vmin, vmax=vmax)
+im = axes[0, 0].imshow(surface1, cmap="viridis", vmin=vmin, vmax=vmax)
 axes[0, 0].set_title("1. Real surface (raw)")
 fig.colorbar(im, ax=axes[0, 0], shrink=0.8)
 
@@ -351,7 +345,7 @@ print(
 fig2, axes2 = plt.subplots(3, 3, figsize=(12, 12))
 flat2 = axes2.ravel()
 
-im = flat2[0].imshow(surface, cmap="viridis", vmin=vmin, vmax=vmax)
+im = flat2[0].imshow(surface1, cmap="viridis", vmin=vmin, vmax=vmax)
 flat2[0].set_title("Reference cutout", fontsize=11, fontweight="bold")
 # Heavy black frame, so the one panel that is *data* rather than model output
 # is obvious at a glance.
@@ -406,7 +400,7 @@ for k in range(N_PLOT):
     )
 ax3.plot(
     x_slice,
-    surface[SLICE_ROW, :],
+    surface1[SLICE_ROW, :],
     color="black",
     linewidth=2,
     label="Reference surface",
@@ -461,7 +455,7 @@ pt_sizes = MARKER_MAX - (MARKER_MAX - MARKER_MIN) * (pt_dist / PROFILE_BAND)
 
 ax3.scatter(
     pt_cols[on_row] * dx,
-    surface[pt_rows[on_row], pt_cols[on_row]],
+    surface1[pt_rows[on_row], pt_cols[on_row]],
     s=MARKER_MAX,
     facecolors="black",
     edgecolors="black",
@@ -471,7 +465,7 @@ ax3.scatter(
 )
 ax3.scatter(
     pt_cols[~on_row] * dx,
-    surface[pt_rows[~on_row], pt_cols[~on_row]],
+    surface1[pt_rows[~on_row], pt_cols[~on_row]],
     s=pt_sizes[~on_row],
     facecolors="white",
     edgecolors="black",
@@ -585,7 +579,6 @@ print(
 print(
     f"clamped by stack_realizations: {int(model.n_clamped[1])} "
     f"-- minimum thickness now {min_thickness:.2f} m "
-    f"(nominal separation was {LAYER_THICK:.1f} m)"
 )
 
 # %% -------------------------------------------------
