@@ -50,7 +50,7 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from .base import NODATA_VARIANCE
+from .base import NODATA_VARIANCE, require_ascending
 
 #: Default complexity-class -> range table (class 0..4), shared with the
 #: geophysical themes. Index by the complexity class *at the well*.
@@ -200,8 +200,8 @@ def build_well_theme(
         source contributes (MATLAB leaves these as ``Inf``; we follow the other
         themes and use the sentinel so the grid carries no NaN/Inf).
     """
-    grid_x = np.asarray(grid_x, dtype=float)
-    grid_y = np.asarray(grid_y, dtype=float)
+    grid_x = require_ascending("grid_x", grid_x)
+    grid_y = require_ascending("grid_y", grid_y)
     nx, ny = grid_x.size, grid_y.size
     n_layers = len(snap_layers)
     if len(jup_layers) != n_layers:

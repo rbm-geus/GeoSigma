@@ -69,7 +69,16 @@ def som_cluster_grid(
         Passed to :func:`~geosigma.preprocess.clusters.post_process_clusters`
         at the end.
     n_training_iter : int, default 250
-        SOM training iterations (``selforgmap(NN*[1 1], 250)``).
+        Single-sample SOM updates (see
+        :func:`~geosigma.preprocess.som.train_som`). The default copies the
+        *number* in ``selforgmap(NN*[1 1], 250)`` but not its meaning: there,
+        250 is ``coverSteps`` and ``train`` then runs batch epochs over the
+        whole dataset, whereas here each iteration presents one sample.
+        Measured on a 10,000-point (range, sill) cloud, 250 updates gives a
+        quantization error about 10% above a converged map (0.079 vs
+        0.072). Raise it for a tighter fit; the clustering's
+        seed-to-seed variability does not improve with longer training, as
+        that comes from splitting one unimodal cloud four ways.
     cleanup_radius : int, default 4
         Neighbourhood half-width (cells) for the first smoothing pass.
     cleanup_radius_0 : int, default 32

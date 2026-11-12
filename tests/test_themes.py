@@ -172,6 +172,55 @@ def test_corr_map_stamps_zero_thickness_wells():
     assert np.isnan(grid).sum() == 5
 
 
+# --------------------------------------------------------------------------- #
+# Axes must ascend. A descending axis -- what you get by reading coordinates
+# off a north-up raster -- used to return a theme with no data in any cell,
+# with no error, because every open window lo < p < hi became empty.
+# --------------------------------------------------------------------------- #
+_ASC = np.arange(8) * 100.0 + 50.0
+
+
+def test_windowed_nearest_rejects_a_descending_axis():
+    args = (np.array([420.0]), np.array([330.0]))
+    kw = dict(
+        search_radius=3,
+        attributes={"v": np.array([7.0])},
+        reducers={"v": "mean"},
+        n_layers=1,
+    )
+    dist, _ = windowed_nearest(*args, _ASC, _ASC, **kw)
+    assert np.isfinite(dist).any()  # the ascending case genuinely finds data
+    with pytest.raises(ValueError, match="grid_y must be strictly ascending"):
+        windowed_nearest(*args, _ASC, _ASC[::-1], **kw)
+    with pytest.raises(ValueError, match="grid_x must be strictly ascending"):
+        windowed_nearest(*args, _ASC[::-1], _ASC, **kw)
+
+
+def test_corr_map_rejects_a_descending_axis():
+    zt = np.array([True])
+    with pytest.raises(ValueError, match="ascending"):
+        corr_map(_ASC, _ASC[::-1], [150.0], [150.0], [1.0], zt)
+
+
+def test_build_well_theme_rejects_a_descending_axis():
+    from geosigma.themes import build_well_theme
+
+    with pytest.raises(ValueError, match="ascending"):
+        build_well_theme(_ASC, _ASC[::-1], [None], [None])
+
+
+def test_corr_map_drops_rather_than_clamps_out_of_grid_wells():
+    # Its docstring once said "clamped"; the code drops them, which is the
+    # safer behaviour -- clamping would stamp a tie onto an edge cell the
+    # well is not in.
+    grid_x = np.array([0.0, 100.0, 200.0])
+    grid_y = np.array([0.0, 100.0])
+    grid = corr_map(
+        grid_x, grid_y, [5_000.0], [5_000.0], [3.0], [True], dx=100.0, dy=100.0
+    )
+    assert np.isnan(grid).all()
+
+
 def test_model_theme_depth_ramp():
     # Single class, single layer; depth 100 m, default gradients/fmin.
     class_grid = np.zeros((1, 1), dtype=int)  # class 0 -> fmin 20

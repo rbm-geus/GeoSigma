@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from .base import require_ascending
+
 
 def combine_variances(themes):
     """Combine theme variance grids as parallel precisions.
@@ -117,14 +119,25 @@ def corr_map(
     Returns
     -------
     ndarray, shape (ny, nx)
-        Tie grid, ``NaN`` away from zero-thickness wells.
+        Tie grid, ``NaN`` away from zero-thickness wells. Row 0 is
+        ``grid_y[0]``, the **south** edge, as everywhere in
+        :mod:`geosigma.themes`; ``np.flipud`` it before pairing with a
+        north-up raster.
+
+    Raises
+    ------
+    ValueError
+        If ``grid_x`` or ``grid_y`` is not strictly ascending.
 
     Notes
     -----
     The MATLAB used a hardcoded 100 m cell size and ``ceil`` indexing from the
     lower-left corner; here the spacing is taken from the axes. The cell index is
-    ``ceil((coord - min) / d) - 1`` (0-based), clamped to the grid, reproducing
-    the MATLAB ``ceil`` binning relative to the lower-left corner.
+    ``ceil((coord - min) / d) - 1`` (0-based), reproducing the MATLAB ``ceil``
+    binning relative to the lower-left corner. Wells whose index falls outside
+    the grid are **dropped**, not clamped onto the edge. That includes a well
+    lying exactly on ``min(grid_x)`` or ``min(grid_y)``, whose ``ceil(0) - 1``
+    is ``-1`` -- the same index MATLAB would reject as ``0`` in 1-based terms.
 
     **Quality indexing is bit-faithful to MATLAB.** ``get_corr_maps.m`` takes the
     zero-thickness wells' *coordinates* (``xutm``/``yutm`` filtered by the
@@ -137,8 +150,8 @@ def corr_map(
     in ``TRANSLATION_PLAN.md``). When the zero-thickness wells are the leading
     wells, the two interpretations coincide.
     """
-    grid_x = np.asarray(grid_x, dtype=float)
-    grid_y = np.asarray(grid_y, dtype=float)
+    grid_x = require_ascending("grid_x", grid_x)
+    grid_y = require_ascending("grid_y", grid_y)
     nx, ny = grid_x.size, grid_y.size
     if dx is None:
         dx = float(grid_x[1] - grid_x[0])

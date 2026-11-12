@@ -14,6 +14,7 @@ spacing, edge replication rather than periodic wrap).
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from geosigma.inpox import draw_points_inpox, ftot_laplace, laplacian_2d
 
@@ -203,14 +204,61 @@ def test_grid_floor_guarantees_a_baseline_point():
     assert pts[::10, ::10].all()
 
 
-def test_wells_are_forced_and_snapped_by_rounding():
-    z = np.zeros((40, 40))
-    ext = {"P0": 1e-6, "x0": 0.0, "y0": 0.0, **T4}
-    # 253 m at dx = 100 m rounds to column 3, not 2 (MATLAB round, not ceil).
-    wells = {"xutm": [253.0], "yutm": [1480.0]}
-    np.random.seed(0)
-    pts = draw_points_inpox(z, ext, dx=100.0, dy=100.0, wells=wells)
-    assert pts[15, 3]
+def _boosted_cells(ny, nx, x, y, origin):
+    """Cells a single well boosts, ignoring the every-10th-cell floor."""
+    z = np.zeros((ny, nx))
+    ext = {"P0": 0.0, "x0": 0.0, "y0": 0.0, **T4, "C": 0.0}
+    _, det = draw_points_inpox(
+        z,
+        ext,
+        dx=100.0,
+        dy=100.0,
+        wells={"xutm": [x], "yutm": [y]},
+        return_details=True,
+        origin=origin,
+    )
+    p = det["probability"].copy()
+    p[::10, ::10] = 0.0
+    return list(zip(*np.nonzero(p >= 1.0)))
+
+
+@pytest.mark.parametrize("row", [3, 4, 5, 6, 17, 18])
+@pytest.mark.parametrize("col", [3, 4, 7, 8])
+def test_a_well_at_a_cell_centre_lands_in_that_cell(row, col):
+    # Both parities of row and col, because the bug this guards was a
+    # round-half-to-even on corner-relative coordinates: cell centres sit
+    # exactly on k + 0.5, so even k stayed put and odd k moved one cell.
+    ny, nx = 20, 12
+    x = (col + 0.5) * 100.0
+    # North-up: row 0 is the top edge, so its centre is the highest y.
+    y_upper = (ny - row - 0.5) * 100.0
+    assert _boosted_cells(ny, nx, x, y_upper, "upper") == [(row, col)]
+    # South-up: row 0 is the bottom edge.
+    y_lower = (row + 0.5) * 100.0
+    assert _boosted_cells(ny, nx, x, y_lower, "lower") == [(row, col)]
+
+
+def test_wells_on_the_outermost_rows_are_kept():
+    # The northernmost row used to round to index ny and be dropped.
+    ny, nx = 20, 12
+    assert _boosted_cells(ny, nx, 750.0, (ny - 0.5) * 100.0, "upper") == [(0, 7)]
+    assert _boosted_cells(ny, nx, 750.0, 50.0, "upper") == [(ny - 1, 7)]
+
+
+def test_a_well_anywhere_inside_a_cell_picks_that_cell():
+    # floor from the corner: the containing cell, not the nearest centre.
+    for x, y in [(301.0, 401.0), (399.0, 499.0), (350.0, 450.0)]:
+        assert _boosted_cells(20, 12, x, y, "lower") == [(4, 3)]
+
+
+def test_wells_outside_the_grid_are_ignored():
+    assert _boosted_cells(20, 12, -10.0, 500.0, "upper") == []
+    assert _boosted_cells(20, 12, 500.0, 99_999.0, "upper") == []
+
+
+def test_origin_must_be_upper_or_lower():
+    with pytest.raises(ValueError, match="origin"):
+        draw_points_inpox(np.zeros((5, 5)), {"P0": 0.1, **T4}, origin="north")
 
 
 def test_details_are_consistent_with_each_other():

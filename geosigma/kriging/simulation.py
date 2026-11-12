@@ -321,6 +321,18 @@ def simulate_layer(
 
     Parameters
     ----------
+    grid : KrigingGrid
+        The layer's residual surface and variance map, from
+        :func:`~geosigma.kriging.state.pack_kriging_grid`.
+    windows : list of KrigingWindow
+        From :func:`~geosigma.kriging.windows.build_windows` on the same grid.
+    n_reals : int
+        Realizations to draw. Cheap to raise: each window's Cholesky factor
+        is computed once and reused for every draw, so the cost grows with a
+        matrix multiply rather than a factorization per realization.
+    cor_noise_rat : float, default 0.5
+        Fraction of observation-noise variance that is spatially correlated;
+        see :func:`~geosigma.core.local_kriging_setup_img.local_kriging_setup_img`.
     seed : int, optional
         If given, calls ``numpy.random.seed(seed)`` once before drawing any
         realizations for this layer — appropriate when calling this function
@@ -331,6 +343,13 @@ def simulate_layer(
         kriging loop.
     variance_correction : bool, default True
         See :func:`blend_window_realizations`.
+
+    Returns
+    -------
+    LayerRealizations
+        Posterior mean, zero-mean realizations and posterior std on the grid,
+        in **residual** units. Add the low-frequency mean back with
+        :func:`to_absolute` to get elevations.
     """
     if seed is not None:
         np.random.seed(seed)

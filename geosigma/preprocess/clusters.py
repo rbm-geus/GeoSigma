@@ -122,8 +122,11 @@ def cluster_range_sill(
         ``method="kmeans"`` only: number of random restarts (best-inertia
         kept) and iterations per restart.
     som_iterations : int, default 250
-        ``method="som"`` only: training iterations (matches ``get_clusters.m``'s
-        ``selforgmap(NN*[1 1], 250)``).
+        ``method="som"`` only: single-sample training updates. The default
+        borrows the number from ``get_clusters.m``'s
+        ``selforgmap(NN*[1 1], 250)`` but is not equivalent to it -- see
+        ``n_training_iter`` in
+        :func:`~geosigma.preprocess.som_clusters.som_cluster_grid`.
 
     Returns
     -------

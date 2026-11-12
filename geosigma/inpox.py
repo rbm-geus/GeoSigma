@@ -131,6 +131,7 @@ def draw_points_inpox(
     wells=None,
     return_details=False,
     normalize=False,
+    origin="upper",
 ):
     """
     INPOX informed point extraction.
@@ -138,6 +139,8 @@ def draw_points_inpox(
     Parameters
     ----------
     surface : 2D ndarray
+        The boundary surface to draw points from. Its row order matters only
+        when ``wells`` are given; see ``origin``.
     ext_vals : dict
         Transfer-function parameters, named as in Madsen et al. (2024) --
         must contain ``P0``, ``L0``, ``A``, ``B``, ``C``, ``D``, ``E``,
@@ -162,11 +165,21 @@ def draw_points_inpox(
         (see ``wells``). The Laplacian is deliberately computed at unit
         spacing regardless -- see the note at its call site.
     wells : dict or None
-        Optional well enforcement.
-        Must contain:
-        wells["xutm"], wells["yutm"]
-        and grid origin in ext_vals:
-        ext_vals["x0"], ext_vals["y0"]
+        Optional well enforcement: each well's cell gets ``+1`` probability,
+        i.e. is always drawn. Must contain ``wells["xutm"]`` and
+        ``wells["yutm"]`` (map coordinates), and ``ext_vals`` must then also
+        hold ``"x0"``/``"y0"``: the grid's **lower-left corner**, exactly as
+        raster metadata gives it (``xllcorner``/``yllcorner``) -- not the
+        centre of the lower-left cell.
+
+        A well is assigned to the cell that *contains* it,
+        ``floor((x - x0) / dx)`` from the corner. That is the cell
+        ``drawpoints.m`` picks too: it rounds from the lower-left cell
+        *centre* (``LLx = min(Grid_X)``), which selects the same containing
+        cell. An earlier version rounded from the corner instead, which put
+        a well at a cell centre exactly on ``k + 0.5`` and let numpy's
+        round-half-to-even split it between ``k`` and ``k + 1``. Wells
+        outside the grid are ignored.
 
         Translated from ``drawpoints.m``'s regular (non-peat) well boost
         only. That source also boosts peatland wells (``PL_wells``) with
@@ -191,6 +204,21 @@ def draw_points_inpox(
         *benchmarking* INPOX against a random draw, where the comparison is
         only meaningful at equal point count, but it cancels the gain in
         count and keeps only the gain in placement.
+    origin : {"upper", "lower"}, default "upper"
+        Which edge of the map row 0 of ``surface`` lies on, for placing
+        ``wells``.
+
+        ``"upper"``: row 0 is the **north** edge -- the layout of every
+        raster loader in this repository (``load_geotiff_grid``,
+        ``load_esri_ascii_grid``) and of ``imshow``'s default. ``"lower"``:
+        row 0 is the south edge, the layout ``drawpoints.m`` assumes (row
+        index grows from ``LLy = min(Grid_Y)``) and the one
+        :mod:`geosigma.themes` produces from ascending axes.
+
+        Getting this wrong does not fail: it mirrors every well vertically.
+        An earlier version had no such parameter and always counted rows
+        from the south, so on the north-up rasters the examples load, a well
+        five rows from the top was boosted five rows from the bottom.
 
     Returns
     -------
@@ -207,15 +235,19 @@ def draw_points_inpox(
         clipped to 1.
     """
 
+    if origin not in ("upper", "lower"):
+        raise ValueError(f"origin must be 'upper' or 'lower', got {origin!r}")
+
     # --- Laplacian ---
     # Unit spacing, NOT dx/dy: drawpoints.m calls `del2(surface)` with no h
     # argument, so its Laplacian is in index units (surface units per cell^2),
-    # and the a/b thresholds of the transfer function below are tuned against
-    # that scale. Passing a real cell size here instead divides the Laplacian
-    # by dx^2 -- at dx=100 m that is a factor of 10,000, which pushes every
-    # cell below `a` and silently reduces INPOX to uniform sampling at p0.
-    # dx/dy still matter below, for converting well coordinates to indices,
-    # which is a genuinely different use (MATLAB hardcodes 100 there).
+    # and the A*L0 / B*L0 thresholds of the transfer function below are tuned
+    # against that scale. Passing a real cell size here instead divides the
+    # Laplacian by dx^2 -- at dx=100 m that is a factor of 10,000, which
+    # pushes every cell below A*L0 and silently reduces INPOX to uniform
+    # sampling at P0. dx/dy still matter below, for converting well
+    # coordinates to indices, which is a genuinely different use (MATLAB
+    # hardcodes 100 there).
     lapl = np.abs(laplacian_2d(surface))
 
     # --- Transfer function (Madsen et al. 2024, eqs 2-4) ---
@@ -267,16 +299,21 @@ def draw_points_inpox(
 
     # --- Optional well enforcement ---
     if wells is not None:
-
         x0 = ext_vals["x0"]
         y0 = ext_vals["y0"]
+        ny, nx = plap.shape
 
         for xw, yw in zip(wells["xutm"], wells["yutm"]):
-            indx = int(np.round((xw - x0) / dx))
-            indy = int(np.round((yw - y0) / dy))
+            # The containing cell, counted from the lower-left corner. floor,
+            # not round: x0/y0 are corners, so a cell-centre coordinate sits
+            # exactly on k + 0.5 and rounding would split it between k and
+            # k + 1 depending on k's parity.
+            col = int(np.floor((xw - x0) / dx))
+            row_from_south = int(np.floor((yw - y0) / dy))
+            row = ny - 1 - row_from_south if origin == "upper" else row_from_south
 
-            if 0 <= indy < plap.shape[0] and 0 <= indx < plap.shape[1]:
-                plap[indy, indx] += 1
+            if 0 <= row < ny and 0 <= col < nx:
+                plap[row, col] += 1
 
     # A probability cannot exceed 1. The grid floor and the well boosts both
     # add a flat +1, so plap routinely runs above it. Clipping here, after

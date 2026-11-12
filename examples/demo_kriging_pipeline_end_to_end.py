@@ -82,26 +82,32 @@ PROFILE_BAND = 200.0
 # %% -------------------------------------------------
 # 1. The real surface, used raw
 # -------------------------------------------------
-z_full, meta = load_geotiff_grid(
-    "examples/data/Jutland_hydrostrat_model/top_surface.tif"
+z_full_1, meta = load_geotiff_grid(
+    "data/Jutland_hydrostrat_model/top_surface.tif"
 )
+
+z_full_2, meta = load_geotiff_grid(
+    "data/Jutland_hydrostrat_model/layer_2_bottom.tif"
+)
+
 dx = float(meta["cellsize"])
 
 # The whole bundled sample GeoTIFF (~100x100 cells) -- it happens to be
 # entirely nodata-free, so no cropping is needed here, unlike a larger real
 # raster where you'd want to window out a nodata-free subset.
 nodata = meta.get("nodata_value", None)
-surface = np.where(z_full == nodata, np.nan, z_full) if nodata is not None else z_full
-assert np.isfinite(surface).all(), "bundled raster unexpectedly has nodata cells"
-assert surface.shape[0] == surface.shape[1], "pipeline below assumes a square grid"
-CROP = surface.shape[0]
+surface1 = np.where(z_full_1 == nodata, np.nan, z_full_1) if nodata is not None else z_full_1
+assert np.isfinite(surface1).all(), "bundled raster unexpectedly has nodata cells"
+assert surface1.shape[0] == surface1.shape[1], "pipeline below assumes a square grid"
+CROP = surface1.shape[0]
 assert (
     0 <= SLICE_ROW < CROP
 ), f"SLICE_ROW={SLICE_ROW} out of range for a {CROP}-row grid"
 print(
     f"Surface: {CROP}x{CROP} cells at {dx:.0f} m, "
-    f"elevation range [{surface.min():.1f}, {surface.max():.1f}] m"
+    f"elevation range [{surface1.min():.1f}, {surface1.max():.1f}] m"
 )
+surface2 = np.where(z_full_2 == nodata, np.nan, z_full_2) if nodata is not None else z_full_2
 
 # The ensemble is far larger than what gets plotted, because the ensemble
 # *mean* in figure 2 is only meaningful with enough draws behind it: the
@@ -255,8 +261,8 @@ estimator = load_default_rangesill_estimator()
 # LAYER_THICK apart is purely the two independent simulations disagreeing.
 LAYER_THICK = 4.0
 
-layer1 = run_layer(surface, "layer 1", SEED)
-layer2 = run_layer(surface - LAYER_THICK, "layer 2", SEED + 100)
+layer1 = run_layer(surface1, "layer 1", SEED)
+layer2 = run_layer(surface2, "layer 2", SEED + 100)
 
 # Figures 1-3 below look at layer 1; these aliases keep them readable.
 points_mask = layer1.points_mask

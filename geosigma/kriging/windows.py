@@ -166,7 +166,18 @@ def build_windows(
 
             sill_cells = modeltheme[i_buf_2d]
             sill_cells = sill_cells[np.isfinite(sill_cells)]
-            sill = float(sill_cells.mean()) if sill_cells.size else float("nan")
+            if not sill_cells.size:
+                # No prior variance is defined anywhere under this window, so
+                # there is nothing to krige with. Raised here, where the cause
+                # is known, rather than left as a NaN sill to fail later as a
+                # variogram-parsing error far from its origin.
+                raise ValueError(
+                    f"modeltheme has no finite values inside the window for "
+                    f"cluster {int(label)}, component {component_id}: no prior "
+                    "variance is defined there. Mask those cells out of "
+                    "active_mask, or fill modeltheme over them."
+                )
+            sill = float(sill_cells.mean())
 
             windows.append(
                 KrigingWindow(

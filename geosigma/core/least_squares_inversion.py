@@ -22,9 +22,12 @@ def least_squares_inversion(G, Cm, Cd, m0, d0, type=2, use_tqdm=True):
     d0 : ndarray
         Observed data vector
     type : int, optional
-        Algorithm variant (1 or 2). Default is 2.
+        Algorithm variant (1 or 2). Default is 2, which is the only variant
+        the kriging driver uses.
     use_tqdm : bool, optional
-        If True, shows a progress bar (like waitbar in MATLAB)
+        **Currently ignored.** Kept for signature compatibility; the progress
+        bar it once switched on (MATLAB's ``waitbar``) is commented out, so
+        no bar is shown either way.
 
     Returns
     -------

@@ -69,6 +69,31 @@ def test_deformat_nested_sum():
     assert [v["par2"] for v in V] == [10.0, 20.0]
 
 
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "nan Gau(300)",  # NaN sill: the f-string the kriging driver builds
+        "5 Gau(nan)",  # NaN range
+        "inf Gau(300)",
+        "garbage",
+        "",
+        "1 Gau(300) + nan Sph(5)",  # one bad component must not be dropped
+    ],
+)
+def test_deformat_rejects_what_it_cannot_parse(bad):
+    with pytest.raises(ValueError):
+        deformat_variogram(bad)
+
+
+def test_precal_cov_never_returns_a_silent_zero_covariance():
+    # The regression this guards: an unparseable sill used to parse to an
+    # empty model, which precal_cov summed into an all-zero covariance --
+    # zero prior variance, with no error anywhere.
+    p = np.array([[0.0, 0.0], [100.0, 0.0]])
+    with pytest.raises(ValueError):
+        precal_cov(p, p, "nan Gau(300)")
+
+
 # --------------------------------------------------------------------------- #
 # semivar_synth
 # --------------------------------------------------------------------------- #

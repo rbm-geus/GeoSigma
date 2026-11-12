@@ -18,11 +18,24 @@ def get_reals_cholesky(cov, Nreals=1, m0=None, verbose=False):
         Mean vector. If None, defaults to zero vector.
         If scalar, broadcast to vector of length n.
         If array, must have length n.
+    verbose : bool
+        Print a one-line summary after drawing.
 
     Returns
     -------
     reals : np.ndarray
         Array of shape (n, Nreals) with realizations.
+
+    Notes
+    -----
+    ``1e-5`` is added to the diagonal before factorizing, exactly as the
+    MATLAB does (``chol(cov + 0.00001*eye(Nvar))``), so a covariance that is
+    only positive *semi*-definite still factorizes. It also means every draw
+    carries an extra ``1e-5`` of independent variance per cell -- negligible
+    for sills of any physical size, but not zero.
+
+    Draws from the global ``numpy.random`` state; seed it yourself for
+    reproducibility.
     """
     nvar = cov.shape[0]
 

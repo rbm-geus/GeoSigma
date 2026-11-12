@@ -899,8 +899,10 @@ def build_range_cholesky_lookup(
     This is what makes :func:`generate_training_data` fast: the dense
     covariance factorization (``~130`` ms each) is the dominant cost of
     generating a sample, and it depends on ``(range, sill)`` only through the
-    *shape* of the covariance matrix, which the sill scales uniformly
-    (``Cov(c·X) = c² · Cov(X)``, so ``chol(c·M) = sqrt(c) · chol(M)``). Fixing
+    *shape* of the covariance matrix, which the sill scales uniformly: with
+    ``C = sill · M`` for a unit-sill ``M``, ``chol(sill · M) =
+    sqrt(sill) · chol(M)``, so a unit-sill draw scaled by ``sqrt(sill)`` is
+    exactly a draw from ``C``. Fixing
     sill at 1 here and scaling realizations by ``sqrt(sill)`` afterwards (see
     :func:`generate_training_data`) means the factor depends on **range
     alone** — so every sample whose (randomly drawn, then rounded) range

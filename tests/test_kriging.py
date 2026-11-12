@@ -433,6 +433,22 @@ def _one_cluster_windows(grid, ny, nx, seed_points=4):
     )
 
 
+def test_build_windows_refuses_a_window_with_no_defined_prior_variance():
+    # A modeltheme that is NaN under a whole window used to give that window
+    # a NaN sill, which became an all-zero covariance -- zero uncertainty,
+    # silently. It must now fail, and say where.
+    grid, (ny, nx) = _small_grid(seed=1)
+    with pytest.raises(ValueError, match="no finite values"):
+        build_windows(
+            grid,
+            np.zeros((ny, nx), dtype=int),
+            np.ones((ny, nx), dtype=bool),
+            np.zeros((ny, nx), dtype=bool),
+            {0: (300.0, 0.0)},
+            np.full((ny, nx), np.nan),
+        )
+
+
 def test_simulate_layer_end_to_end_shapes_and_finite_inside_domain():
     grid, (ny, nx) = _small_grid(seed=1)
     windows = _one_cluster_windows(grid, ny, nx)

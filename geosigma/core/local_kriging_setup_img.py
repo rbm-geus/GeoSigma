@@ -20,25 +20,33 @@ def local_kriging_setup_img(
 
     Parameters
     ----------
-    GLOBAL : dict
-        Global data container with normalized grids, uncertainties, and data.
-        Must contain keys: "xx_norm", "yy_norm", "img_unc", "img_dobs".
-    i_buf : array-like
-        Indices of model (grid) cells to include in the local estimation domain.
-        Typically represents unmasked cells within the local buffer region.
-    ip_buf : array-like
-        Indices of conditioning (data) points used for kriging.
-        Usually corresponds to interpreted or measured data points.
+    GLOBAL : mapping
+        Flat per-cell arrays, keyed ``"xx_norm"``, ``"yy_norm"`` (grid-index
+        coordinates), ``"img_unc"`` (per-cell **standard deviation**) and
+        ``"img_dobs"`` (the residual to condition on). In the pipeline this is
+        :meth:`geosigma.kriging.state.KrigingGrid.as_global_dict`.
+    i_buf : ndarray of bool, shape (n_cells,)
+        Boolean **mask**, not indices: the cells of this local window, i.e. the
+        model parameters being estimated.
+    ip_buf : ndarray of bool, shape (n_cells,)
+        Boolean **mask** of the conditioning cells -- the cells carrying an
+        observation. Must be a subset of ``i_buf``.
     curvariance : float
-        Variance (sill) of the statistical model.
+        Prior sill of the Gaussian model covariance ``Cm``.
     currange : float
-        Range parameter for the spatial covariance model.
+        Practical range (metres) of the Gaussian model -- used for both
+        ``Cm`` and the correlated part of ``Cd``.
     cor_noise_rat : float
-        Correlation ratio between measurement noise and spatially correlated error.
+        Fraction, in ``[0, 1]``, of the observation-noise variance that is
+        spatially correlated (with the same range as ``Cm``); the remaining
+        ``1 - cor_noise_rat`` is white. ``0`` gives uncorrelated noise.
     dx : float, optional
-        Physical grid spacing in x-direction (in meters). Default is 100.
+        Physical grid spacing in x-direction (in meters). Default is 100,
+        the value MATLAB hardcodes as ``xx_norm * 100``.
     dy : float, optional
         Physical grid spacing in y-direction (in meters). Default is 100.
+    verbose : bool, optional
+        Print a one-line message once the matrices are built.
 
     Returns
     -------
