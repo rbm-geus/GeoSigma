@@ -29,7 +29,7 @@ np.random.seed(42)
 # %% -------------------------------------------------
 # 1. Load surface
 # -------------------------------------------------
-z, meta = load_geotiff_grid("examples/data/Jutland_hydrostrat_model/top_surface.tif")
+z, meta = load_geotiff_grid("data/Jutland_hydrostrat_model/top_surface.tif")
 
 # Handle nodata
 nodata = meta.get("nodata_value", None)
