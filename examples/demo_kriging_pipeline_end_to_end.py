@@ -614,10 +614,7 @@ fig4.colorbar(im, ax=axes4[2], shrink=0.85, label="m")
 for ax in axes4:
     ax.set_xticks([])
     ax.set_yticks([])
-fig4.suptitle(
-    f"Layer correction: two independently kriged boundaries {LAYER_THICK:.0f} m "
-    "apart, stacked so they never cross"
-)
+
 fig4.tight_layout(rect=[0, 0, 1, 0.93])
 
 # %% -------------------------------------------------
