@@ -69,7 +69,7 @@ from geosigma.inpox import draw_points_inpox, ftot_laplace
 SEED = 1
 
 # The same cutout the kriging demo uses.
-z, meta = load_geotiff_grid("examples/data/Jutland_hydrostrat_model/top_surface.tif")
+z, meta = load_geotiff_grid("data/Jutland_hydrostrat_model/top_surface.tif")
 dx = float(meta["cellsize"])
 
 # P0 is the floor: a flat surface draws P0 of its cells, a structured one
