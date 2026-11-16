@@ -8,7 +8,7 @@ boundary carries an honest uncertainty rather than a single best guess.
 
 The workflow, and where each step lives
 ---------------------------------------
-``examples/demo_kriging_pipeline_end_to_end.py`` runs all of this on a real
+``examples/preview/demo_kriging_pipeline_end_to_end.py`` runs all of this on a real
 surface; the steps below are that script's steps.
 
 1. **Draw conditioning points** — :func:`geosigma.inpox.draw_points_inpox`

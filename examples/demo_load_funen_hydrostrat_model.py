@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -6,7 +5,6 @@ import numpy as np
 
 # Project imports
 from utils import load_esri_ascii_grid, grid_coordinates_from_esri_meta
-from plotting import add_in_between_gridlines
 
 # Data paths are relative to this file, so the demo runs from any directory.
 DATA = Path(__file__).resolve().parent / "data"

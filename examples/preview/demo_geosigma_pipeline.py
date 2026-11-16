@@ -20,7 +20,6 @@ demo_kriging_pipeline_end_to_end.py.
 /RBM, 20-03-2026
 """
 
-
 from pathlib import Path
 
 import numpy as np
@@ -40,9 +39,7 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 # %% -------------------------------------------------
 # 1. Load surface
 # -------------------------------------------------
-z, meta = load_geotiff_grid(
-    str(DATA / "Jutland_hydrostrat_model" / "top_surface.tif")
-)
+z, meta = load_geotiff_grid(str(DATA / "Jutland_hydrostrat_model" / "top_surface.tif"))
 
 # Handle nodata
 nodata = meta.get("nodata_value", None)

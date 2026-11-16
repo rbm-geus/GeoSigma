@@ -42,6 +42,7 @@ Requires the optional ``torch`` and ``scipy`` dependencies:
 """
 
 import os
+from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -103,9 +104,10 @@ N_TRAIN_SAMPLES = 1000
 # free. The first run (flag False) always writes the cache, so flipping this
 # on afterwards just works.
 LOAD_CACHED_TRAINING_DATA = False
-TRAINING_DATA_CACHE = os.path.join(
-    os.path.dirname(__file__), "data", "rangesill_nn", "training_data.npz"
-)
+# Outputs go to examples/output/rangesill_nn/, resolved relative to this file
+# so the demo runs from any directory (examples/output/ is gitignored).
+OUT_DIR = Path(__file__).resolve().parent.parent / "output" / "rangesill_nn"
+TRAINING_DATA_CACHE = str(OUT_DIR / "training_data.npz")
 N_TRAIN_EPOCHS = 50
 
 # Which network to train: "conv" (two small convolution layers + a linear
@@ -386,7 +388,7 @@ plt.show()
 # %% -------------------------------------------------
 # 5. Save and reload
 # -------------------------------------------------
-out_dir = os.path.join(os.path.dirname(__file__), "data", "rangesill_nn")
+out_dir = str(OUT_DIR)
 os.makedirs(out_dir, exist_ok=True)
 out_path = os.path.join(out_dir, "example_trained.pt")
 

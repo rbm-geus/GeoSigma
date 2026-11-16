@@ -48,6 +48,7 @@ Requires the optional ``torch``/``scipy`` extras for the NN estimator:
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -67,6 +68,9 @@ from geosigma.kriging import (
     to_absolute,
 )
 
+# Data paths are relative to this file, so the demo runs from any directory.
+DATA = Path(__file__).resolve().parent.parent / "data"
+
 SEED = 1
 np.random.seed(SEED)
 
@@ -83,11 +87,11 @@ PROFILE_BAND = 200.0
 # 1. The real surface, used raw
 # -------------------------------------------------
 z_full_1, meta = load_geotiff_grid(
-    "data/Jutland_hydrostrat_model/top_surface.tif"
+    str(DATA / "Jutland_hydrostrat_model" / "top_surface.tif")
 )
 
 z_full_2, meta = load_geotiff_grid(
-    "data/Jutland_hydrostrat_model/layer_1_bottom.tif"
+    str(DATA / "Jutland_hydrostrat_model" / "layer_1_bottom.tif")
 )
 
 dx = float(meta["cellsize"])
@@ -96,7 +100,9 @@ dx = float(meta["cellsize"])
 # entirely nodata-free, so no cropping is needed here, unlike a larger real
 # raster where you'd want to window out a nodata-free subset.
 nodata = meta.get("nodata_value", None)
-surface1 = np.where(z_full_1 == nodata, np.nan, z_full_1) if nodata is not None else z_full_1
+surface1 = (
+    np.where(z_full_1 == nodata, np.nan, z_full_1) if nodata is not None else z_full_1
+)
 assert np.isfinite(surface1).all(), "bundled raster unexpectedly has nodata cells"
 assert surface1.shape[0] == surface1.shape[1], "pipeline below assumes a square grid"
 CROP = surface1.shape[0]
@@ -107,7 +113,9 @@ print(
     f"Surface: {CROP}x{CROP} cells at {dx:.0f} m, "
     f"elevation range [{surface1.min():.1f}, {surface1.max():.1f}] m"
 )
-surface2 = np.where(z_full_2 == nodata, np.nan, z_full_2) if nodata is not None else z_full_2
+surface2 = (
+    np.where(z_full_2 == nodata, np.nan, z_full_2) if nodata is not None else z_full_2
+)
 
 # The ensemble is far larger than what gets plotted, because the ensemble
 # *mean* in figure 2 is only meaningful with enough draws behind it: the

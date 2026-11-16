@@ -40,7 +40,7 @@ post-pass).
 Composing a full multi-stage run is also left to the caller. The choice of
 point-drawing scheme, clusterer and variance maps is the modelling, so
 wrapping one particular choice in a library function would narrow the
-library rather than widen it. ``examples/demo_kriging_pipeline_end_to_end.py``
+library rather than widen it. ``examples/preview/demo_kriging_pipeline_end_to_end.py``
 shows one such composition, including running these functions once per
 boundary and stacking the results.
 

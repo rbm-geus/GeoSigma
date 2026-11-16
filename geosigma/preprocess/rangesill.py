@@ -329,7 +329,7 @@ def load_default_rangesill_estimator() -> NNRangeSillEstimator:
 
     The weights live at ``geosigma/preprocess/data/rangesill_default.pt`` and
     were produced by :func:`train_rangesill_estimator` — see
-    ``examples/example_train_rangesill_nn.py`` for the reproducible training
+    ``examples/preview/demo_train_rangesill_nn.py`` for the reproducible training
     recipe that made them (the original MATLAB pipeline's pretrained net,
     ``FinalNetworkSillRangeBothNoNormalization.mat``, cannot be loaded from
     Python and its training data was never archived, so this default is a
@@ -355,7 +355,7 @@ def load_default_rangesill_estimator() -> NNRangeSillEstimator:
         raise FileNotFoundError(
             f"No default range/sill model found at {model_path}. Train one "
             "with geosigma.preprocess.rangesill.train_rangesill_estimator "
-            "(see examples/example_train_rangesill_nn.py) and save it there, "
+            "(see examples/preview/demo_train_rangesill_nn.py) and save it there, "
             "or pass an explicit `estimator=` to estimate_range_sill_grid()."
         )
     with resources.as_file(model_path) as p:
@@ -1225,7 +1225,7 @@ def train_rangesill_estimator(
 
     This is also how the estimator bundled as the library default
     (``geosigma/preprocess/data/rangesill_default.pt``) was produced. See
-    ``examples/example_train_rangesill_nn.py`` for a runnable, evaluated
+    ``examples/preview/demo_train_rangesill_nn.py`` for a runnable, evaluated
     version of this recipe, including the cache-to-disk pattern.
 
     Requires the optional ``torch`` dependency (and ``scipy``, transitively,

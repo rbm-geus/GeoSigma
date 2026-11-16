@@ -60,16 +60,21 @@ scale. Panel 2's colour bar is on that scale, and ``a`` is directly
 comparable to it.
 """
 
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
 
 from utils import load_geotiff_grid
 from geosigma.inpox import draw_points_inpox, ftot_laplace
 
+# Data paths are relative to this file, so the demo runs from any directory.
+DATA = Path(__file__).resolve().parent.parent / "data"
+
 SEED = 1
 
 # The same cutout the kriging demo uses.
-z, meta = load_geotiff_grid("data/Jutland_hydrostrat_model/top_surface.tif")
+z, meta = load_geotiff_grid(str(DATA / "Jutland_hydrostrat_model" / "top_surface.tif"))
 dx = float(meta["cellsize"])
 
 # P0 is the floor: a flat surface draws P0 of its cells, a structured one
