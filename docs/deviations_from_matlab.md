@@ -10,9 +10,11 @@ the library relate to that code differently:
 - **The simulation (v1.0.0: `geosigma.preprocess`, `geosigma.kriging`,
   `geosigma.assembly`)** implements the method published in
   Madsen et al. (2026), *Mathematical Geosciences*, with **deliberate
-  improvements** over the MATLAB implementation. Its output can therefore
-  **not be compared with MATLAB bit for bit**. Where an improvement has a
-  switch, the default is the improved behaviour and the MATLAB behaviour is
+  improvements**. Most of them depart from the MATLAB implementation; one,
+  the merging of realizations from the cluster areas (`variance_correction`),
+  departs from the published method itself. The output can therefore **not
+  be compared with MATLAB bit for bit**. Where an improvement has a switch,
+  the default is the improved behaviour and the original behaviour is
   available on request (see the table).
 
 This page lists every deliberate deviation, and separately the corrections
@@ -20,15 +22,15 @@ that brought earlier Python code back in line with MATLAB.
 
 ## Summary
 
-| Area | GeoSigma | MATLAB | Reproduce MATLAB |
+| Area | GeoSigma | Departs from | Reproduce the original |
 |---|---|---|---|
-| Range/sill estimation | Network trained from scratch, predicts range only; sill in closed form | Pretrained network predicts range and sill | Not possible (MATLAB network cannot be loaded) |
-| Scattered-point interpolation | Cubic | Natural neighbour | Not available |
-| Edge windows | Reflection-padded, full window everywhere | Windows near the edge cropped or skipped | Not available |
-| Blending overlapping kriging windows | `variance_correction=True` (default) | No correction | `variance_correction=False` |
-| SOM clustering | Standard Kohonen SOM, new implementation | `selforgmap` (Deep Learning Toolbox) | Not possible (proprietary internals) |
-| INPOX transfer function | Published parameters (Madsen et al. 2024, Table 1, T4) | Undocumented literals in `drawpoints.m` | Pass the MATLAB values in `ext_vals` |
-| Layer stacking | No pre-Quaternary binding branch | Region-specific branch in `get_layered_models.m` | Out of scope (region-specific) |
+| Range/sill estimation | Network trained from scratch, predicts range only; sill in closed form | MATLAB: pretrained network predicts range and sill | Not possible (MATLAB network cannot be loaded) |
+| Scattered-point interpolation | Cubic | MATLAB: natural neighbour | Not available |
+| Edge windows | Reflection-padded, full window everywhere | MATLAB: windows near the edge cropped or skipped | Not available |
+| Merging realizations from the cluster areas | `variance_correction=True` (default) | Published method (Madsen et al. 2026), as implemented in `local_kriger.m`: no correction | `variance_correction=False` |
+| SOM clustering | Standard Kohonen SOM, new implementation | MATLAB: `selforgmap` (Deep Learning Toolbox) | Not possible (proprietary internals) |
+| INPOX transfer function | Published parameters (Madsen et al. 2024, Table 1, T4) | MATLAB: undocumented literals in `drawpoints.m` | Pass the MATLAB values in `ext_vals` |
+| Layer stacking | No pre-Quaternary binding branch | MATLAB: region-specific branch in `get_layered_models.m` | Out of scope (region-specific) |
 
 ## Deliberate deviations (simulation, v1.0.0)
 
@@ -38,8 +40,8 @@ Module: `geosigma.preprocess.rangesill`. MATLAB:
 `get_interpolated_minigrids_parallel.m` with the pretrained network
 `FinalNetworkSillRangeBothNoNormalization.mat`.
 
-The method is described in Falk & Madsen (2023), *GEUS Bulletin* 53 (see
-References).
+Reference for the range/sill network and the sill without noise bias:
+Falk & Madsen (2023), *GEUS Bulletin* 53 (see References).
 
 - **The network is retrained, not converted.** The MATLAB network cannot be
   loaded outside MATLAB, so GeoSigma ships a network trained from scratch on
@@ -78,23 +80,28 @@ so cells near the boundary get a full window. Without this, a 33-cell window
 drops a border of about 16 cells, which is more than half the cells of a
 100 × 100 grid.
 
-### Blending overlapping kriging windows: `variance_correction`
+### Merging realizations from the cluster areas: `variance_correction`
 
 Module: `geosigma.kriging.simulation` (`blend_window_realizations`,
-`simulate_layer`). MATLAB: `local_kriger.m`.
+`simulate_layer`, `simulate_model`). Published method: Madsen et al. (2026),
+*Mathematical Geosciences*. MATLAB: `local_kriger.m`.
 
-Each kriging window draws its realizations independently, and overlapping
-windows are blended by a weighted average. MATLAB (and GeoSigma with
-`variance_correction=False`) leaves the averaged draws with less variance
-than the posterior standard deviation reported for the same cells: up to
-about 30 % less where two windows overlap at equal weight. With
-`variance_correction=True` (the **default**), the draws are rescaled so that
-each cell's marginal variance matches the reported posterior standard
-deviation. The posterior mean is unchanged.
+**This is a deviation from the published method**, not only from its MATLAB
+implementation. In the method, each cluster area (one connected component of
+one cluster, with a buffer zone around it) is kriged and simulated on its
+own, and the realizations of neighbouring areas are merged by a weighted
+average where their buffer zones overlap. Because each area draws its
+realizations independently, the merged draws have less variance than the
+posterior standard deviation reported for the same cells: up to about 30 %
+less where two areas overlap at equal weight.
 
-`variance_correction=False` reproduces `local_kriger.m` bit for bit.
+With `variance_correction=True` (the **default**), the merged draws are
+rescaled so that each cell's marginal variance matches the reported
+posterior standard deviation. The posterior mean is unchanged.
+`variance_correction=False` gives the published method's behaviour, and
+reproduces `local_kriger.m` bit for bit.
 
-*Detailed documentation of the cluster blending follows.*
+*Documentation of the improvement follows.*
 
 ### SOM clustering: a new implementation
 
@@ -185,7 +192,8 @@ remain bit-exact against the MATLAB reference grids after this change.
 - Falk, F. A., & Madsen, R. B. (2023). Machine learning-based estimation and
   clustering of statistics within stratigraphic models as exemplified in
   Denmark. *GEUS Bulletin*, 53.
-  <https://doi.org/10.34194/geusb.v53.8353>
+  <https://doi.org/10.34194/geusb.v53.8353> (reference for the range/sill
+  network and the sill without noise bias)
 - Madsen, R. B., Falk, F. A., Møller, I., & Høyer, A.-S. (2024).
   Introducing INPOX: a method for informed point extraction from geological
   2D surfaces exemplified on the Danish national hydrostratigraphic model.

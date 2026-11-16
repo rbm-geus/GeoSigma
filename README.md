@@ -48,14 +48,14 @@ The built-in themes were run on the same input data as the original MATLAB imple
 
 ### The simulation (v1.0.0) and MATLAB
 
-The simulation implements the method published in Madsen et al. (2026), *Mathematical Geosciences* (see [References](#references)), with deliberate improvements over the MATLAB implementation. Its output can therefore **not be compared with MATLAB bit for bit**, unlike the variance-map tool above. For example, blending overlapping kriging windows uses `variance_correction=True` by default, so the realizations carry the variance the posterior standard deviation reports; `variance_correction=False` gives MATLAB's behaviour. Every deviation, and how to get MATLAB's behaviour where that is possible, is listed in [`docs/deviations_from_matlab.md`](docs/deviations_from_matlab.md).
+The simulation implements the method published in Madsen et al. (2026), *Mathematical Geosciences* (see [References](#references)), with deliberate improvements. Its output can therefore **not be compared with MATLAB bit for bit**, unlike the variance-map tool above. One improvement departs from the published method itself: realizations from the cluster areas are merged with `variance_correction=True` by default, so the merged realizations carry the variance the posterior standard deviation reports; `variance_correction=False` gives the published method's behaviour, as in the MATLAB code. Documentation of the improvement follows. Every deviation, and how to get the original behaviour where that is possible, is listed in [`docs/deviations_from_matlab.md`](docs/deviations_from_matlab.md).
 
 ## Capabilities
 
 - **v0.1.0:** Construct per-layer variance maps for layer boundaries from multiple information sources (TEM, PACES, gamma and resistivity logs, seismic reflectors, boreholes, or your own source defined in a YAML spec)
 - **v0.1.0:** Export variance maps as GeoTIFF rasters for use in downstream modelling workflows
 - **v1.0.0:** Estimate the local variogram range at sampled points with a pretrained neural-network estimator (`geosigma.preprocess.rangesill`; sill is a closed-form statistic, not learned) and group points into kriging zones (`geosigma.preprocess.clusters`)
-- **v1.0.0:** Condition each layer boundary by local kriging (`geosigma.kriging`), then draw geostatistical realizations directly from the posterior covariance by Cholesky decomposition (`get_reals_cholesky`), not by sequential simulation, and blend overlapping local windows into one coherent surface
+- **v1.0.0:** Condition each layer boundary by local kriging (`geosigma.kriging`), then draw geostatistical realizations directly from the posterior covariance by Cholesky decomposition (`get_reals_cholesky`), not by sequential simulation, and merge the realizations from the cluster areas into one coherent surface
 - **Experimental:** Integrate with PEST for parameter perturbation and ensemble-based uncertainty propagation (to be reviewed together with the simulation for v1.0.0)
 
 ## Installation
@@ -157,7 +157,7 @@ Some core functions are adapted from the open-source [mGstat](https://github.com
 ## References
 
 - Madsen, R. B., Falk, F. A., Møller, I., Troldborg, L., & Høyer, A.-S. (2026). Probabilistic Modeling and Uncertainty Simulations of National-Scale Hydrostratigraphic Models: An Example from Denmark. *Mathematical Geosciences*. https://doi.org/10.1007/s11004-025-10263-9
-- Falk, F. A., & Madsen, R. B. (2023). Machine learning-based estimation and clustering of statistics within stratigraphic models as exemplified in Denmark. *GEUS Bulletin*, 53. https://doi.org/10.34194/geusb.v53.8353
+- Falk, F. A., & Madsen, R. B. (2023). Machine learning-based estimation and clustering of statistics within stratigraphic models as exemplified in Denmark. *GEUS Bulletin*, 53. https://doi.org/10.34194/geusb.v53.8353 (reference for the range/sill network and the sill without noise bias)
 - Madsen, R. B., Falk, F. A., Møller, I., & Høyer, A.-S. (2024). Introducing INPOX: a method for informed point extraction from geological 2D surfaces exemplified on the Danish national hydrostratigraphic model. *GEUS Bulletin*, 57. https://doi.org/10.34194/geusb.v57.8364
 
 ## License

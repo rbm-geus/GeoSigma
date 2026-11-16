@@ -17,11 +17,12 @@ APIs to change before v1.0.0.
 The simulation implements the method published in Madsen et al. (2026),
 *Mathematical Geosciences* (doi
 [10.1007/s11004-025-10263-9](https://doi.org/10.1007/s11004-025-10263-9)),
-with deliberate improvements over the MATLAB implementation. Its output can
-therefore **not be compared with MATLAB bit for bit**. For example, blending
-overlapping kriging windows uses `variance_correction=True` by default;
-`variance_correction=False` gives MATLAB's behaviour. All deviations are
-listed in [`../../docs/deviations_from_matlab.md`](../../docs/deviations_from_matlab.md).
+with deliberate improvements. Its output can therefore **not be compared
+with MATLAB bit for bit**. One improvement departs from the published method
+itself: realizations from the cluster areas are merged with
+`variance_correction=True` by default; `variance_correction=False` gives the
+published method's behaviour, as in the MATLAB code. Documentation of the
+improvement follows. All deviations are listed in [`../../docs/deviations_from_matlab.md`](../../docs/deviations_from_matlab.md).
 
 ## Demos
 
