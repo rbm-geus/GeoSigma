@@ -1,18 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Demo: INPOX-based conditional simulation  [PREVIEW — INCOMPLETE]
+Demo: INPOX points and a covariance model from the core primitives  [PREVIEW]
 
-This is a v1.0.0 preview. It currently stops after step 3: conditioning and
-realization generation (steps 4-5) depend on the kriging driver, which is not
-translated yet. See examples/preview/README.md.
+This is a v1.0.0 preview that calls the core primitives directly. See
+examples/preview/README.md.
 
 Steps:
 1. Load surface
 2. Extract points using INPOX
 3. Build covariance model
 
-When finished, this script will demonstrate the full GeoSigma workflow.
-Conditioning and realization drawing are NOT implemented here -- the script
+Conditioning and realization drawing are NOT done here -- the script
 stops once the prior covariance is assembled. For the full workflow through
 kriging, simulation and layer stacking, see
 demo_kriging_pipeline_end_to_end.py.
