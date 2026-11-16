@@ -27,8 +27,8 @@ listed in [`../../docs/deviations_from_matlab.md`](../../docs/deviations_from_ma
 
 | Script | What it shows | Needs |
 |---|---|---|
-| `demo_kriging_pipeline_end_to_end.py` | The whole simulation on two real boundaries of the sample model: INPOX points → range/sill estimation → SOM kriging zones → local kriging and realizations → layer stacking with crossing boundaries clamped. The variance maps are synthetic stand-ins. Takes about 5 minutes. | `nn` extra |
-| `demo_train_rangesill_nn.py` | Trains the range/sill network from scratch on synthetic fields and compares it with the shipped default. This is the reproducible recipe behind `geosigma/preprocess/data/rangesill_default.pt`. Writes to `examples/output/rangesill_nn/`. Takes about 4 minutes. | `nn` extra |
+| `demo_kriging_pipeline_end_to_end.py` | The whole simulation on two real boundaries of the sample model: INPOX points → range/sill estimation → SOM kriging zones → local kriging and realizations → layer stacking with crossing boundaries clamped. The variance maps are synthetic stand-ins. Takes several minutes, depending on the machine. | `nn` extra |
+| `demo_train_rangesill_nn.py` | Trains the range/sill network from scratch on synthetic fields and compares it with the shipped default. It uses the same recipe as `geosigma/preprocess/data/rangesill_default.pt` at a much smaller scale; the script lists the settings that produced the default. Writes to `examples/output/rangesill_nn/`. Takes several minutes, depending on the machine. Its comparison with the default is not like for like; see the note in the script. | `nn` extra |
 | `demo_inpox_point_drawing.py` | The INPOX transfer function and how its parameters change which points are drawn | |
 | `demo_inpox_basic_jutland_hydrostrat.py` | INPOX selection of conditioning points on the sample model | |
 | `demo_geosigma_pipeline.py` | Surface → INPOX points → covariance model, using the core primitives directly. Stops once the prior covariance is assembled; see `demo_kriging_pipeline_end_to_end.py` for the full workflow. | |

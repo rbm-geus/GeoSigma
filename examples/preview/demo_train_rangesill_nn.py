@@ -68,22 +68,26 @@ DX = CELL_SIZE  # 100 m/cell -- matches Cell_Size in the same source
 RANGE_BOUNDS = (50.0, 2000.0)
 SILL_BOUNDS = (1.0, 50.0)
 
-# How many synthetic "borehole" points are sampled per training window before
+# How many synthetic "borehole" points are sampled per window before
 # interpolation. There is no single MATLAB-equivalent value for this -- real
 # point density is data-dependent, not a pipeline constant -- so it's a free
-# parameter here; 40 is a reasonable illustrative default.
+# parameter here. It sets the density of both the training fields and the
+# held-out evaluation fields in step 2 (360 of the 33*33 = 1089 cells, ~1/3).
 N_SCATTER_POINTS = 360
 
 # The training dataset size: how many synthetic fields train_rangesill_estimator
-# draws for this run. N_TRAIN_SAMPLES/N_TRAIN_EPOCHS below are small enough to
-# run in well under a minute on a laptop CPU -- this is a fast illustrative
-# run, not a reproduction of the shipped default's actual training recipe.
+# draws for this run. N_TRAIN_SAMPLES/N_TRAIN_EPOCHS below keep this a quick
+# illustrative run, not a reproduction of the shipped default's actual
+# training recipe. Runtime depends strongly on the machine: most of it is
+# spent generating the synthetic fields (one covariance factorization per
+# field), not training. Expect several minutes on a laptop CPU; on the same
+# machine, two runs took 4 and 11 minutes.
+#
 # The shipped default was trained on 100,000 samples with every grid cell used
 # as a scatter point (n_scatter_points = 33*33 = 1089), conv architecture,
 # hidden=16, 50 epochs, seed=1 -- ~70 min to generate the data plus ~6 min to
-# train. So expect this quick run to score noticeably lower than the "shipped
-# default" comparison in step 6 below -- that gap is the cost of this example
-# staying fast, not a bug.
+# train. Do not read the step 6 comparison as "small run vs. full run",
+# though: see the note there.
 #
 # Note the default's training density (1089 points per window) is far denser
 # than a realistic point set, and the network is accurate at the density it
@@ -406,6 +410,15 @@ assert np.isclose(r0, r1) and np.isclose(s0, s1)
 # %% -------------------------------------------------
 # 6. Compare against the shipped default, if installed
 # -------------------------------------------------
+# NOTE: this comparison is NOT like for like. The held-out fields use
+# N_SCATTER_POINTS (360) points per window, the density this run's network
+# was trained at. The shipped default was trained at 1089 points per window
+# and is less accurate at lower densities (log-log correlation 0.996 at 1089
+# points, 0.904 at ~175; see the note above N_TRAIN_SAMPLES). So this quick
+# run can score as well as, or better than, the default here -- in one run,
+# 0.955 against 0.944. That says the test matches this network's training
+# density, not that the small network is better. To compare like for like,
+# set N_SCATTER_POINTS = MINIGRID * MINIGRID.
 try:
     default_estimator = load_default_rangesill_estimator()
 except FileNotFoundError:
