@@ -21,8 +21,10 @@ with deliberate improvements. Its output can therefore **not be compared
 with MATLAB bit for bit**. One improvement departs from the published method
 itself: realizations from the cluster areas are merged with
 `variance_correction=True` by default; `variance_correction=False` gives the
-published method's behaviour, as in the MATLAB code. Documentation of the
-improvement follows. All deviations are listed in [`../../docs/deviations_from_matlab.md`](../../docs/deviations_from_matlab.md).
+published method's behaviour with the same algorithm as the MATLAB code (the
+realizations still differ from MATLAB's, because MATLAB and Python use
+different random-number generators). Documentation of the improvement
+follows. All deviations are listed in [`../../docs/deviations_from_matlab.md`](../../docs/deviations_from_matlab.md).
 
 ## Demos
 

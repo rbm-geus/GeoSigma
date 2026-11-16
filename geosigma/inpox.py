@@ -159,7 +159,9 @@ def draw_points_inpox(
         ``|del2| ~ 0.33``, max ~5), so its ``f2`` branch never activates at
         all, and its weaker ``C`` lifts the draw fraction only ~9% above
         ``P0`` where T4 lifts it ~45%. Pass the MATLAB values explicitly if
-        you need to reproduce reference output.
+        you need MATLAB's transfer function. The drawn points will still
+        differ from MATLAB's, because the draw is random and MATLAB and
+        Python use different random-number generators.
     dx, dy : float
         Cell size, used **only** to convert well coordinates to grid indices
         (see ``wells``). The Laplacian is deliberately computed at unit

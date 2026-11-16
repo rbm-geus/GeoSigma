@@ -38,8 +38,9 @@ suppresses their variance wherever windows overlap — down to ``1/sqrt(2)``
 of the intended amplitude at equal weight, while the posterior std blended
 alongside them reports no such thing. ``variance_correction=True`` (the
 default, see :func:`blend_window_realizations`) rescales the draws to the
-variance they are supposed to have; pass ``False`` for bit-for-bit MATLAB
-agreement.
+variance they are supposed to have; pass ``False`` for the same algorithm as
+the MATLAB. The realizations will still not be identical to MATLAB's, because
+MATLAB and Python use different random-number generators.
 """
 
 from __future__ import annotations
@@ -247,7 +248,9 @@ def blend_window_realizations(
         that structure. Fixing it properly would mean drawing the windows
         from a shared random field rather than independent ones.
 
-        ``False`` reproduces ``local_kriger.m`` bit for bit. Use it when
+        ``False`` uses the same algorithm as ``local_kriger.m``. The
+        realizations are still not identical to MATLAB's, because MATLAB and
+        Python use different random-number generators. Use it when
         comparing against MATLAB output.
 
     Returns

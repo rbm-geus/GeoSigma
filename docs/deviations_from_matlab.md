@@ -22,14 +22,14 @@ that brought earlier Python code back in line with MATLAB.
 
 ## Summary
 
-| Area | GeoSigma | Departs from | Reproduce the original |
+| Area | GeoSigma | Departs from | Get the original behaviour |
 |---|---|---|---|
 | Range/sill estimation | Network trained from scratch, predicts range only; sill in closed form | MATLAB: pretrained network predicts range and sill | Not possible (MATLAB network cannot be loaded) |
 | Scattered-point interpolation | Cubic | MATLAB: natural neighbour | Not available |
 | Edge windows | Reflection-padded, full window everywhere | MATLAB: windows near the edge cropped or skipped | Not available |
-| Merging realizations from the cluster areas | `variance_correction=True` (default) | Published method (Madsen et al. 2026), as implemented in `local_kriger.m`: no correction | `variance_correction=False` |
+| Merging realizations from the cluster areas | `variance_correction=True` (default) | Published method (Madsen et al. 2026), as implemented in `local_kriger.m`: no correction | `variance_correction=False` (same algorithm; realizations differ, see below) |
 | SOM clustering | Standard Kohonen SOM, new implementation | MATLAB: `selforgmap` (Deep Learning Toolbox) | Not possible (proprietary internals) |
-| INPOX transfer function | Published parameters (Madsen et al. 2024, Table 1, T4) | MATLAB: undocumented literals in `drawpoints.m` | Pass the MATLAB values in `ext_vals` |
+| INPOX transfer function | Published parameters (Madsen et al. 2024, Table 1, T4) | MATLAB: undocumented literals in `drawpoints.m` | Pass the MATLAB values in `ext_vals` (same transfer function; drawn points differ, see below) |
 | Layer stacking | No pre-Quaternary binding branch | MATLAB: region-specific branch in `get_layered_models.m` | Out of scope (region-specific) |
 
 ## Deliberate deviations (simulation, v1.0.0)
@@ -42,6 +42,11 @@ Module: `geosigma.preprocess.rangesill`. MATLAB:
 
 Reference for the range/sill network and the sill without noise bias:
 Falk & Madsen (2023), *GEUS Bulletin* 53 (see References).
+
+> **To be confirmed by Frederik:** the description of the sill (a sill
+> without noise bias, i.e. a network trained without noise) and the code
+> (the sill as a closed-form sample variance, see below) point to two
+> different mechanisms. The wording below is kept until this is confirmed.
 
 - **The network is retrained, not converted.** The MATLAB network cannot be
   loaded outside MATLAB, so GeoSigma ships a network trained from scratch on
@@ -98,8 +103,10 @@ less where two areas overlap at equal weight.
 With `variance_correction=True` (the **default**), the merged draws are
 rescaled so that each cell's marginal variance matches the reported
 posterior standard deviation. The posterior mean is unchanged.
-`variance_correction=False` gives the published method's behaviour, and
-reproduces `local_kriger.m` bit for bit.
+`variance_correction=False` gives the published method's behaviour and uses
+the same algorithm as `local_kriger.m`. The realizations are still not
+identical to MATLAB's, because MATLAB and Python use different random-number
+generators.
 
 *Documentation of the improvement follows.*
 
@@ -127,8 +134,10 @@ case **T4** (`L0=1, A=1.5, B=3, C=5, D=1, E=0.8, g=2`). `drawpoints.m`
 hardcodes a different set (in the same symbols: `L0=1, A=2.4, B=12, C=1.25,
 D=0.25, E=0.09, g=0.8`). With those values the suppression branch never
 activates on a typical surface, and the draw fraction rises only about 9 %
-above `P0`, against about 45 % with T4. To reproduce the MATLAB point sets,
-pass the MATLAB values in `ext_vals`.
+above `P0`, against about 45 % with T4. To use MATLAB's transfer function,
+pass the MATLAB values in `ext_vals`. The drawn points will still not be
+identical to MATLAB's, because the draw is random and MATLAB and Python use
+different random-number generators.
 
 ### Layer stacking: no region-specific branch
 
