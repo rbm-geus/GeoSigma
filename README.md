@@ -50,7 +50,8 @@ The built-in themes were run on the same input data as the original MATLAB imple
 
 - **v0.1.0:** Construct per-layer variance maps for layer boundaries from multiple information sources (TEM, PACES, gamma and resistivity logs, seismic reflectors, boreholes, or your own source defined in a YAML spec)
 - **v0.1.0:** Export variance maps as GeoTIFF rasters for use in downstream modelling workflows
-- **v1.0.0:** Condition each layer boundary by local kriging, then draw geostatistical realizations directly from the posterior covariance by Cholesky decomposition (`get_reals_cholesky`), not by sequential simulation
+- **v1.0.0:** Estimate the local variogram range at sampled points with a pretrained neural-network estimator (`geosigma.preprocess.rangesill`; sill is a closed-form statistic, not learned) and group points into kriging zones (`geosigma.preprocess.clusters`)
+- **v1.0.0:** Condition each layer boundary by local kriging (`geosigma.kriging`), then draw geostatistical realizations directly from the posterior covariance by Cholesky decomposition (`get_reals_cholesky`), not by sequential simulation, and blend overlapping local windows into one coherent surface
 - **Experimental:** Integrate with PEST for parameter perturbation and ensemble-based uncertainty propagation (to be reviewed together with the simulation for v1.0.0)
 
 ## Installation
@@ -86,6 +87,10 @@ pip install -e .
 
 `environment.yml` is the authoritative conda dependency declaration;
 `pyproject.toml` declares the pip dependencies.
+
+The range/sill neural-network estimator (`geosigma.preprocess.rangesill`) needs
+the optional `torch` dependency, kept out of the core install because it's large
+and platform-specific: `pip install -e ".[nn]"`.
 
 ### Check the install
 

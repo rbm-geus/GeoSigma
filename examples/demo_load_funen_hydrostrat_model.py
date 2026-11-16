@@ -14,7 +14,7 @@ DATA = Path(__file__).resolve().parent / "data"
 
 # --- Load topo surface ---
 z_topo, meta = load_esri_ascii_grid(
-    str(DATA / "Funen 2019 model" / "topo.asc")
+    str(DATA / "Funen_hydrostrat_model" / "surfaces" / "topo.asc")
 )
 
 # --- Build coordinates ---
@@ -29,17 +29,16 @@ if nodata is not None:
 fig, ax = plt.subplots(figsize=(8, 6))
 
 im = ax.imshow(
-    z_topo,
-    origin="lower",
-    extent=[x.min(), x.max(), y.min(), y.max()],
-    cmap="terrain"
+    z_topo, origin="lower", extent=[x.min(), x.max(), y.min(), y.max()], cmap="terrain"
 )
 
 ax.set_title("Topography (Funen)")
 ax.set_xlabel("Easting [m]")
 ax.set_ylabel("Northing [m]")
 
-#add_in_between_gridlines(ax, x, y)
+# Cell-boundary gridlines, as the other load demos draw them. Needs
+# `from plotting import add_in_between_gridlines` to be re-added if enabled.
+# add_in_between_gridlines(ax, x, y)
 
 cbar = fig.colorbar(im, ax=ax)
 cbar.set_label("Elevation [m]")
