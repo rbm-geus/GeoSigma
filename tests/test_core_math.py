@@ -57,9 +57,7 @@ def test_edist_anisotropy_not_implemented():
 # deformat_variogram
 # --------------------------------------------------------------------------- #
 def test_deformat_single_structure():
-    assert deformat_variogram("1 Sph(5)") == [
-        {"type": "Sph", "par1": 1.0, "par2": 5.0}
-    ]
+    assert deformat_variogram("1 Sph(5)") == [{"type": "Sph", "par1": 1.0, "par2": 5.0}]
 
 
 def test_deformat_nested_sum():
@@ -108,8 +106,32 @@ def test_semivar_spherical_known_values():
 def test_semivar_gaussian_endpoints():
     V = {"type": "Gau", "par1": 2.0, "par2": 10.0}
     g = semivar_synth(V, np.array([0.0, 1e6]))
-    np.testing.assert_allclose(g[0], 0.0)           # zero at origin
+    np.testing.assert_allclose(g[0], 0.0)  # zero at origin
     np.testing.assert_allclose(g[1], 2.0, atol=1e-9)  # approaches sill
+
+
+def test_semivar_gaussian_uses_mgstat_practical_range():
+    # The endpoint test above holds for both exp(-(h/a)^2) and
+    # exp(-3(h/a)^2), so it cannot tell them apart. This pins MATLAB's value.
+    # mGstat precal_cov.m:111 calls semivar_synth(V(iV),d,0), i.e. gstat=0,
+    # which selects the GSLIB2/Goovaerts branch at semivar_synth.m:105:
+    #   sgamma = v1.*(1-exp(-3*h.^2/v2.^2))
+    # (https://github.com/AUProbGeo/mGstat). At h = range the semivariance is
+    # therefore 1 - exp(-3) ~ 95% of the sill (the practical range).
+    V = {"type": "Gau", "par1": 2.0, "par2": 10.0}
+    h = np.array([5.0, 10.0, 20.0])
+    g = semivar_synth(V, h)
+    np.testing.assert_allclose(g, 2.0 * (1.0 - np.exp(-3.0 * (h / 10.0) ** 2)))
+    np.testing.assert_allclose(g[1], 2.0 * (1.0 - np.exp(-3.0)))
+
+
+def test_precal_cov_gaussian_matches_mgstat_at_the_range():
+    # cov = sill - semivariance, so at a separation equal to the range the
+    # covariance is sill * exp(-3), not sill * exp(-1).
+    p = np.array([[0.0, 0.0], [300.0, 0.0]])
+    C, _ = precal_cov(p, p, "2 Gau(300)")
+    np.testing.assert_allclose(C[0, 0], 2.0)
+    np.testing.assert_allclose(C[0, 1], 2.0 * np.exp(-3.0))
 
 
 def test_semivar_unknown_model_raises():
@@ -124,10 +146,10 @@ def test_precal_cov_diagonal_is_sill_and_symmetric():
     pos = np.array([[0.0, 0.0], [10.0, 0.0], [0.0, 10.0]])
     cov, semiv = precal_cov(pos, pos, "2 Gau(15)")
     assert cov.shape == (3, 3)
-    np.testing.assert_allclose(np.diag(cov), 2.0)        # zero lag -> full sill
-    np.testing.assert_allclose(cov, cov.T)               # symmetric
-    np.testing.assert_allclose(np.diag(semiv), 0.0)      # zero semivariance at lag 0
-    assert np.all(cov <= 2.0 + 1e-12)                    # covariance bounded by sill
+    np.testing.assert_allclose(np.diag(cov), 2.0)  # zero lag -> full sill
+    np.testing.assert_allclose(cov, cov.T)  # symmetric
+    np.testing.assert_allclose(np.diag(semiv), 0.0)  # zero semivariance at lag 0
+    assert np.all(cov <= 2.0 + 1e-12)  # covariance bounded by sill
 
 
 def test_precal_cov_string_matches_parsed_list():
@@ -149,8 +171,8 @@ def test_get_reals_cholesky_shape_and_reproducible():
     np.random.seed(0)
     b = get_reals_cholesky(cov, Nreals=5)
 
-    assert a.shape == (3, 5)                 # (n_points, n_reals)
-    np.testing.assert_array_equal(a, b)      # seeded -> reproducible
+    assert a.shape == (3, 5)  # (n_points, n_reals)
+    np.testing.assert_array_equal(a, b)  # seeded -> reproducible
 
 
 def test_get_reals_cholesky_statistics_converge():
@@ -215,15 +237,43 @@ def test_local_kriging_setup_shapes_and_content():
     i_buf = np.array([True, True, True])
     ip_buf = np.array([0, 1, 2])
     G, Cm, Cd, d_obs, m0 = local_kriging_setup_img(
-        GLOBAL, i_buf, ip_buf, curvariance=2.0, currange=150.0,
-        cor_noise_rat=0.5, dx=100, dy=100,
+        GLOBAL,
+        i_buf,
+        ip_buf,
+        curvariance=2.0,
+        currange=150.0,
+        cor_noise_rat=0.5,
+        dx=100,
+        dy=100,
     )
     assert G.shape == (3, 3) and Cm.shape == (3, 3) and Cd.shape == (3, 3)
-    np.testing.assert_allclose(G, np.eye(3))            # all cells observed
+    np.testing.assert_allclose(G, np.eye(3))  # all cells observed
     np.testing.assert_allclose(d_obs, [10.0, 20.0, 30.0])
     np.testing.assert_allclose(m0, np.zeros(3))
-    np.testing.assert_allclose(np.diag(Cm), 2.0)        # zero-lag sill
-    np.testing.assert_allclose(Cd, Cd.T)                # symmetric data cov
+    np.testing.assert_allclose(np.diag(Cm), 2.0)  # zero-lag sill
+    np.testing.assert_allclose(Cd, Cd.T)  # symmetric data cov
+
+
+@pytest.mark.parametrize("curvariance", [0.5, 2.0, 50.0])
+def test_local_kriging_noise_shape_has_unit_sill(curvariance):
+    # local_kriging_setup_img.m:18 builds the noise shape with a unit sill,
+    # sprintf('%g %s(%g)',1,'Gau',currange), so Cd depends only on img_unc and
+    # cor_noise_rat -- never on the cluster variance used for Cm.
+    GLOBAL = _toy_global()
+    i_buf = np.array([True, True, True])
+    ip_buf = np.array([0, 1, 2])
+    _, _, Cd, _, _ = local_kriging_setup_img(
+        GLOBAL,
+        i_buf,
+        ip_buf,
+        curvariance=curvariance,
+        currange=150.0,
+        cor_noise_rat=0.5,
+        dx=100,
+        dy=100,
+    )
+    unc = np.asarray(GLOBAL["img_unc"], dtype=float)[ip_buf]
+    np.testing.assert_allclose(np.diag(Cd), unc**2)
 
 
 def test_core_chain_runs_end_to_end():
@@ -232,7 +282,11 @@ def test_core_chain_runs_end_to_end():
     i_buf = np.array([True, True, True])
     ip_buf = np.array([0, 1, 2])
     G, Cm, Cd, d_obs, m0 = local_kriging_setup_img(
-        GLOBAL, i_buf, ip_buf, curvariance=2.0, currange=150.0,
+        GLOBAL,
+        i_buf,
+        ip_buf,
+        curvariance=2.0,
+        currange=150.0,
         cor_noise_rat=0.5,
     )
     m_est, Cm_est = least_squares_inversion(G, Cm, Cd, m0=m0, d0=d_obs, type=2)
