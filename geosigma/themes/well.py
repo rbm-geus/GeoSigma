@@ -41,6 +41,19 @@ For a well of integer quality ``q`` (1-based) at depth-below-terrain ``z``::
 ``gradient`` and ``K`` are per-quality tables that differ between the snapped and
 Jupiter sets (the snapped set is trusted more). They are carried on the
 :class:`WellSet` so the builder stays free of any particular calibration.
+
+**Quality convention: 1 = best.** ``q`` runs from 1 (the most reliable
+borehole) to ``n = len(Ks)`` (the least reliable). ``K[q-1]`` and
+``gradient[q-1]`` are the values for quality ``q``, so for the convention to
+hold the tables must grow with ``q``: a worse borehole gets a larger ``var0``
+and therefore contributes less certainty. This is the convention of the MATLAB
+reference (``get_well_theme.m``), whose tables increase with quality.
+
+The builder cannot tell a swapped scale from a correct one: it only indexes the
+tables. If your source rates boreholes the other way round (high = good),
+convert it before building the :class:`WellSet`, or every well-described
+borehole is treated as the worst. See the borehole section of
+``docs/bring_your_own_data.md``.
 """
 
 from __future__ import annotations
@@ -71,12 +84,17 @@ class WellSet:
         Depth of the boundary below terrain at the well, ``max(terrain − z, 0)``
         — the ``var0`` depth term. Computed by the adapter.
     quality : ndarray of int
-        1-based borehole-quality class indexing ``gradients`` / ``Ks``.
+        Borehole-quality class, **1 = best (most reliable) … n = worst**, where
+        ``n = len(Ks)``. It indexes ``gradients`` / ``Ks`` 1-based (quality
+        ``q`` uses index ``q - 1``). Check the direction of your source's
+        rating before filling this in; see the module docstring.
     comp_class : ndarray of int
         Complexity class (0..4) sampled at the well; indexes the range table.
         NaN is treated as class 0 (matching MATLAB ``isnan -> 0``).
-    gradients, Ks : sequence of float, length 4
-        Per-quality ``var0`` tables (quality 1..4 -> index 0..3).
+    gradients, Ks : sequence of float, one entry per quality class
+        Per-quality ``var0`` tables, ordered from the best quality (index 0)
+        to the worst. They should therefore increase from first to last entry.
+        The Danish tables (``get_well_theme.m``, 27/6 2023) have four classes.
     """
 
     xs: np.ndarray

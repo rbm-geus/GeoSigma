@@ -24,6 +24,10 @@ There are thirteen, in three groups:
   where no data say anything: the background variance (`prior`) that every
   combined variance map needs.
 
+Boreholes have a builder of their own (`build_well_theme`) rather than a
+`ThemeSpec`, so they are covered separately in **Part D — boreholes**, including
+the quality-rating convention that the borehole tables depend on.
+
 For each choice you get: the **question** in plain terms, the **parameter(s)**
 that express the answer, **how to reason about it** for your own setting, and the
 **Danish answers** as worked illustrations. The Danish values are **calibrated to
@@ -576,6 +580,84 @@ variance is `(0.5 · ramp)²`. These values are available as
 yourself.
 The model theme is always part of the Danish combination, so inside the
 modelled area the final variance map is bounded by it.
+
+---
+
+# Part D — boreholes
+
+A borehole informs a layer boundary where it reaches it, and how much it is
+trusted depends on how well it is described. That makes the borehole theme
+different enough from the geophysical themes to have its own builder,
+`geosigma.themes.build_well_theme` (MATLAB `get_well_theme.m`):
+
+- each cell sums the certainty of up to three nearest boreholes inside the
+  search window (`n_nearest = 3`, `search_radius = 6` cells), instead of using
+  the single nearest location;
+- the decay is a plain Gaussian, `sill · exp(-3 d² / range²)`, with no plateau;
+- the range comes from the complexity class **at the borehole**, not at the
+  cell;
+- each layer has its own borehole list (the boreholes that were interpreted at,
+  or reach, that boundary), and there are two lists per layer: interpreted
+  ("snapped") boreholes and other database boreholes (in Denmark, Jupiter). The
+  layer's variance is `1 / (snapped precision + database precision)`.
+
+The per-layer lists are passed as `WellSet` objects. The choice that needs care
+is the quality rating.
+
+## The quality rating: 1 = best
+
+**Convention.** Every borehole carries an integer quality class `q`, from
+**1 = best (most reliable)** to **n = worst**, where `n` is the length of the
+tables below. The base variance of a borehole at depth `z` below terrain is
+
+```
+var0 = K[q]² + (gradient[q] · z)²        sill = 1 / var0
+```
+
+with `K` (a depth-independent floor, in metres) and `gradient` (how fast the
+uncertainty grows with depth) given per quality class, in the same order: index
+0 is quality 1, the last index is the worst quality. The tables must therefore
+**grow** from first to last entry, so that a worse borehole gets a larger
+variance and counts for less. GeoSigma has no built-in tables; you pass them on
+each `WellSet`. The same convention applies to the quality stamped into the
+zero-thickness tie grid by `corr_map`.
+
+**Reasoning for your setting.** Decide what separates a good borehole from a
+poor one in your data: how the lithology was described (by a geologist, from
+cuttings, from a driller's log), when it was drilled, whether it has been
+checked against geophysics. Rank those into classes, best first, and give each
+class a floor `K` and a gradient that reflect how far a boundary pick from such a
+borehole could plausibly be off. Interpreted boreholes that the modeller has
+already tied the surfaces to deserve smaller values than raw database boreholes.
+
+**Danish tables, for illustration only [methods citation].** The Danish
+national model uses four classes and different tables for the two borehole
+lists (`get_well_theme.m`, values of 27 June 2023). They are calibrated to that
+model and are not defaults:
+
+| | Quality 1 (best) | 2 | 3 | 4 (worst) |
+|---|---|---|---|---|
+| Interpreted (snapped): `K` [m] | 0.15 | 1.0 | 2.0 | 2.5 |
+| Interpreted (snapped): `gradient` | 0.010 | 0.015 | 0.035 | 0.050 |
+| Jupiter: `K` [m] | 0.4 | 1.5 | 2.5 | 3.0 |
+| Jupiter: `gradient` | 0.0125 | 0.0175 | 0.0375 | 0.0525 |
+
+(The MATLAB source writes the gradients as `0.5 * [0.02 0.03 0.07 0.1]` and
+`0.5 * [0.025 0.035 0.075 0.105]`.) The range table by complexity class is
+`(100, 500, 400, 250, 100)` m for class 0 (unknown) to 4, the default
+`comp2range` of `build_well_theme`.
+
+> **Check the direction of your source's rating before you use it.** The
+> builder only indexes the tables; it cannot tell a reversed scale from a
+> correct one, and a reversed scale gives plausible-looking maps in which the
+> best-described boreholes count least. Some sources rate boreholes the other
+> way round (high = good). In the Danish national run this happened: the quality
+> rating in the borehole data was computed by a data-preparation script from
+> the Danish Environmental Protection Agency (Miljøstyrelsen, MST), and that
+> script turned out to swap good and bad. Neither the MATLAB code nor GeoSigma
+> was at fault; the inputs were reversed. Before building the `WellSet`s,
+> confirm on a few boreholes you know that the ones you trust most carry the
+> lowest numbers, and convert the rating if they do not.
 
 ---
 
