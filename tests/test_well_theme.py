@@ -148,3 +148,108 @@ def test_three_nearest_cap_and_tie_order():
     np.testing.assert_allclose(fast, ref, rtol=0, atol=0, equal_nan=True)
     # Sanity: the central cell is informative and finite.
     assert fast[2, 2, 0] < NODATA_VARIANCE
+
+
+# --------------------------------------------------------------------------- #
+# Quality convention: 1 = best ... n = worst (input checks)
+# --------------------------------------------------------------------------- #
+_GRAD = 0.5 * np.array([0.02, 0.03, 0.07, 0.1])
+_KS = np.array([0.15, 1.0, 2.0, 2.5])
+
+
+def _one_well(quality, Ks=_KS, gradients=_GRAD):
+    return WellSet(
+        xs=np.array([200.0]), ys=np.array([200.0]), depth=np.array([30.0]),
+        quality=np.array([quality]), comp_class=np.array([2.0]),
+        gradients=gradients, Ks=Ks,
+    )
+
+
+def _grid():
+    return np.arange(5) * 100.0, np.arange(5) * 100.0
+
+
+@pytest.mark.parametrize("bad", [0, 5, -1, np.nan, 1.5])
+@pytest.mark.parametrize("source", ["snapped", "database"])
+def test_quality_outside_table_range_is_rejected(bad, source):
+    # 0 used to index the LAST (worst) entry through negative indexing, and NaN
+    # was cast to an arbitrary integer; both must now be refused.
+    gx, gy = _grid()
+    w = _one_well(bad)
+    snap, jup = ([w], [None]) if source == "snapped" else ([None], [w])
+    with pytest.raises(ValueError, match=rf"layer 0, {source} wells.*outside 1\.\.4"):
+        build_well_theme(gx, gy, snap, jup)
+
+
+@pytest.mark.parametrize("q", [1, 2, 3, 4])
+def test_every_quality_in_range_is_accepted(q):
+    gx, gy = _grid()
+    grid = build_well_theme(gx, gy, [_one_well(q)], [None])
+    assert grid[2, 2, 0] < NODATA_VARIANCE
+
+
+def test_float_integer_quality_is_accepted():
+    # Qualities read from CSV often arrive as floats (2.0); integral values are fine.
+    gx, gy = _grid()
+    as_int = build_well_theme(gx, gy, [_one_well(2)], [None])
+    as_float = build_well_theme(gx, gy, [_one_well(2.0)], [None])
+    np.testing.assert_array_equal(as_int, as_float)
+
+
+def test_quality_range_follows_table_length():
+    # The upper bound is len(Ks), not a hardcoded 4.
+    gx, gy = _grid()
+    Ks6, grad6 = np.linspace(0.1, 3.0, 6), np.linspace(0.01, 0.06, 6)
+    build_well_theme(gx, gy, [_one_well(6, Ks=Ks6, gradients=grad6)], [None])
+    with pytest.raises(ValueError, match=r"outside 1\.\.6"):
+        build_well_theme(gx, gy, [_one_well(7, Ks=Ks6, gradients=grad6)], [None])
+
+
+def test_mismatched_table_lengths_are_rejected():
+    gx, gy = _grid()
+    w = _one_well(1, Ks=_KS, gradients=_GRAD[:3])
+    with pytest.raises(ValueError, match="gradients has 3 entries but Ks has 4"):
+        build_well_theme(gx, gy, [w], [None])
+
+
+@pytest.mark.parametrize(
+    "Ks, gradients, bad_name",
+    [
+        (_KS[::-1], _GRAD, "Ks"),          # reversed K table
+        (_KS, _GRAD[::-1], "gradients"),   # reversed gradient table
+    ],
+)
+def test_decreasing_table_warns(Ks, gradients, bad_name):
+    from geosigma.themes.combine import GeoSigmaWarning
+
+    gx, gy = _grid()
+    msg = rf"{bad_name} = .* decreases with quality"
+    with pytest.warns(GeoSigmaWarning, match=msg):
+        build_well_theme(gx, gy, [_one_well(1, Ks=Ks, gradients=gradients)], [None])
+
+
+def test_decreasing_table_warns_once_per_distinct_table():
+    import warnings as _w
+
+    from geosigma.themes.combine import GeoSigmaWarning
+
+    gx, gy = _grid()
+    rev = _one_well(1, Ks=_KS[::-1])
+    with _w.catch_warnings(record=True) as rec:
+        _w.simplefilter("always")
+        build_well_theme(gx, gy, [rev, rev, rev], [rev, None, rev])
+    hits = [r for r in rec if issubclass(r.category, GeoSigmaWarning)]
+    assert len(hits) == 1
+
+
+def test_increasing_or_flat_tables_do_not_warn():
+    import warnings as _w
+
+    from geosigma.themes.combine import GeoSigmaWarning
+
+    gx, gy = _grid()
+    flat = _one_well(2, Ks=np.array([1.0, 1.0, 2.0, 2.0]))
+    with _w.catch_warnings(record=True) as rec:
+        _w.simplefilter("always")
+        build_well_theme(gx, gy, [_one_well(1), flat], [None, None])
+    assert not [r for r in rec if issubclass(r.category, GeoSigmaWarning)]

@@ -58,12 +58,14 @@ borehole is treated as the worst. See the borehole section of
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Optional, Sequence
 
 import numpy as np
 
 from .base import NODATA_VARIANCE
+from .combine import GeoSigmaWarning
 
 #: Default complexity-class -> range table (class 0..4), shared with the
 #: geophysical themes. Index by the complexity class *at the well*.
@@ -104,6 +106,56 @@ class WellSet:
     comp_class: np.ndarray
     gradients: Sequence[float]
     Ks: Sequence[float]
+
+
+def _check_quality(w: WellSet, where: str) -> None:
+    """Reject quality values the tables cannot index, and mismatched tables.
+
+    ``quality`` must be finite integers in ``1..len(Ks)``. Without this check a
+    quality of 0 would silently index the LAST (worst) table entry through
+    Python's negative indexing, and NaN would be cast to an arbitrary integer.
+    """
+    n = len(w.Ks)
+    if len(w.gradients) != n:
+        raise ValueError(
+            f"{where}: gradients has {len(w.gradients)} entries but Ks has {n}; "
+            "both tables need one entry per quality class"
+        )
+    q = np.asarray(w.quality, dtype=float).ravel()
+    bad = ~np.isfinite(q) | (q != np.round(q)) | (q < 1) | (q > n)
+    if bad.any():
+        shown = np.unique(q[bad])[:10].tolist()
+        raise ValueError(
+            f"{where}: {int(bad.sum())} well(s) have a quality outside 1..{n} "
+            f"(1 = best, {n} = worst); offending values: {shown}. Quality 0 and "
+            "NaN are rejected rather than mapped to a table entry. If your source "
+            "rates boreholes the other way round, convert it first (see "
+            "docs/bring_your_own_data.md, Part D)."
+        )
+
+
+def _warn_if_tables_decrease(w: WellSet, where: str, seen: set) -> None:
+    """Warn once per distinct table pair that decreases with quality.
+
+    Under the 1 = best convention a worse borehole must not get a smaller
+    ``K`` or ``gradient`` than a better one. A decreasing table usually means
+    the tables, or the quality scale, are ordered the wrong way round. Equal
+    neighbouring entries are allowed.
+    """
+    key = (tuple(float(v) for v in w.Ks), tuple(float(v) for v in w.gradients))
+    if key in seen:
+        return
+    seen.add(key)
+    for name, table in (("Ks", key[0]), ("gradients", key[1])):
+        if np.any(np.diff(table) < 0):
+            warnings.warn(
+                f"{where}: {name} = {list(table)} decreases with quality. The "
+                "convention is 1 = best ... n = worst, so the tables should grow "
+                "from first to last entry; otherwise worse boreholes count for "
+                "more. Check the order of the tables and of the quality scale.",
+                GeoSigmaWarning,
+                stacklevel=3,
+            )
 
 
 def _well_precision(grid_x, grid_y, w: WellSet, search_radius, comp2range, n_nearest):
@@ -217,6 +269,18 @@ def build_well_theme(
         :data:`~geosigma.themes.base.NODATA_VARIANCE` sentinel where neither
         source contributes (MATLAB leaves these as ``Inf``; we follow the other
         themes and use the sentinel so the grid carries no NaN/Inf).
+
+    Raises
+    ------
+    ValueError
+        If a well set has a quality outside ``1..len(Ks)`` (including 0, NaN
+        and non-integers), or ``gradients`` and ``Ks`` of different lengths.
+
+    Warns
+    -----
+    GeoSigmaWarning
+        Once per distinct table pair, if ``Ks`` or ``gradients`` decreases from
+        one quality class to the next (the tables should grow, since 1 = best).
     """
     grid_x = np.asarray(grid_x, dtype=float)
     grid_y = np.asarray(grid_y, dtype=float)
@@ -224,6 +288,16 @@ def build_well_theme(
     n_layers = len(snap_layers)
     if len(jup_layers) != n_layers:
         raise ValueError("snap_layers and jup_layers must have equal length")
+
+    # Validate every well set before computing anything, so a bad quality is
+    # reported up front with its layer and source rather than mid-build.
+    seen_tables: set = set()
+    for s in range(n_layers):
+        for label, wset in (("snapped", snap_layers[s]), ("database", jup_layers[s])):
+            if wset is not None and np.asarray(wset.xs).size:
+                where = f"layer {s}, {label} wells"
+                _check_quality(wset, where)
+                _warn_if_tables_decrease(wset, where, seen_tables)
 
     out = np.full((ny, nx, n_layers), NODATA_VARIANCE)
     for s in range(n_layers):
