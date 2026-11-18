@@ -41,6 +41,7 @@ All settings are in the `CONFIG` block at the top of `geosigma_dk_workflow.py`.
 ```
 Bjerringbro-example/
 ├── region_config.json        layer list and location of the model surfaces
+├── geosigma_dk_workflow.py   main script: themes -> variance maps -> realizations
 ├── geofysik/                 ThemeData bundles (points CSV + manifest) per method
 │   ├── skytem/               SkyTEM            -> spec skytem
 │   ├── fewtem/               ground TEM        -> spec fewtem
@@ -48,10 +49,11 @@ Bjerringbro-example/
 ├── boringer/
 │   ├── jupiter.csv           Jupiter BOREHOLE extract (65 wells)
 │   └── wells.csv             borehole input for the well theme
-├── geosigma_dk_workflow.py   main script: themes -> variance maps -> realizations
-├── gerda_db.py               reads GERDA exports (Access .mdb or Firebird .fdb)
-├── gerda_to_themedata.py     GERDA models -> ThemeData bundle
-└── wells_to_csv.py           Jupiter (+ interpretation points) -> wells.csv
+├── data_prep/
+│   ├── gerda_db.py               reads GERDA exports (Access .mdb or Firebird .fdb)
+│   ├── gerda_to_themedata.py     GERDA models -> ThemeData bundle
+│   └── wells_to_csv.py           Jupiter (+ interpretation points) -> wells.csv
+
 ```
 
 ## How the inputs were made
