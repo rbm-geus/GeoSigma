@@ -104,6 +104,30 @@ import numpy as np
 NODATA_VARIANCE = 100000.0
 
 
+def require_ascending(name: str, axis: np.ndarray) -> np.ndarray:
+    """Return ``axis`` as a float array, or raise if it is not strictly ascending.
+
+    Every theme builder bins coordinates against its axes assuming they
+    ascend -- the MATLAB convention, ``LLy = min(UTM_Y)``, so output row 0
+    is the **south** edge. A descending axis, which is what you get by
+    reading coordinates off a north-up raster, does not fail on its own: the
+    open windows ``lo < p < hi`` all become empty, and the theme comes back
+    with no data in a single cell. This guard turns that into an error.
+    """
+    axis = np.asarray(axis, dtype=float)
+    if axis.ndim != 1:
+        raise ValueError(
+            f"{name} must be a 1-D coordinate axis, got shape {axis.shape}"
+        )
+    if axis.size > 1 and not np.all(np.diff(axis) > 0):
+        raise ValueError(
+            f"{name} must be strictly ascending (row/column 0 = the south/west "
+            "edge). For a north-up raster, build the ascending axis and flip "
+            "the output with np.flipud before pairing it with the raster."
+        )
+    return axis
+
+
 @dataclass
 class ThemeData:
     """Model-agnostic inputs to a theme builder.
@@ -271,8 +295,8 @@ def windowed_nearest(
     """
     xs = np.asarray(xs, dtype=float)
     ys = np.asarray(ys, dtype=float)
-    grid_x = np.asarray(grid_x, dtype=float)
-    grid_y = np.asarray(grid_y, dtype=float)
+    grid_x = require_ascending("grid_x", grid_x)
+    grid_y = require_ascending("grid_y", grid_y)
     nx = grid_x.size
     ny = grid_y.size
     R = int(search_radius)
@@ -477,6 +501,22 @@ def build_theme(
 
     Parameters
     ----------
+    data : ThemeData
+        The theme's data points and their per-point, per-layer attributes,
+        already loaded and filtered by an adapter.
+    spec : ThemeSpec
+        What the theme does with them: which attributes it needs, how they
+        are reduced, the certainty kernel and the complexity-dependent
+        ranges. Built-in specs are in :mod:`geosigma.themes.themes`.
+    grid_x, grid_y : ndarray, shape (nx,), (ny,)
+        Cell-centre coordinate axes (east, north). Both must be **strictly
+        ascending**, as in the MATLAB (``LLy = min(UTM_Y)``), so row 0 of
+        the result is the **south** edge -- the opposite of a north-up
+        raster as ``load_geotiff_grid`` returns it. ``np.flipud`` the result
+        before pairing it with one. A descending axis raises rather than
+        silently returning an empty theme.
+    n_layers : int
+        Number of modelled layers; the size of the result's last axis.
     window_fn : callable, optional
         The windowed nearest-source pass, defaulting to the vectorised
         :func:`windowed_nearest`. Exposed as a seam so tests can substitute a
@@ -486,12 +526,18 @@ def build_theme(
     Returns
     -------
     ndarray, shape (ny, nx, n_layers)
-        The theme's variance map; :data:`NODATA_VARIANCE` where the theme carries
-        no usable information (no informing location in window, unknown
-        complexity, or the theme's depth/DOI mask).
+        The theme's variance map, row 0 = south (see ``grid_y``);
+        :data:`NODATA_VARIANCE` where the theme carries no usable information
+        (no informing location in window, unknown complexity, or the theme's
+        depth/DOI mask).
+
+    Raises
+    ------
+    ValueError
+        If ``grid_x`` or ``grid_y`` is not strictly ascending.
     """
-    grid_x = np.asarray(grid_x, dtype=float)
-    grid_y = np.asarray(grid_y, dtype=float)
+    grid_x = require_ascending("grid_x", grid_x)
+    grid_y = require_ascending("grid_y", grid_y)
 
     local_dist, attrs = window_fn(
         data.xs,

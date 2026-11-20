@@ -38,9 +38,13 @@ classifiers = [
 ]
 
 # Verified against the actual imports of geosigma/, utils/, plotting/ and
-# pest_integration/ (AST walk, not a guess). Note the absentees: scipy, h5py and
+# pest_integration/ (AST walk, not a guess). Note the absentees: h5py and
 # cmcrameri are NOT imported anywhere in the library — they belong to the private
 # validation harness under examples/, so they are deliberately not declared here.
+# scipy *is* now needed, but only by geosigma.preprocess.rangesill's cubic
+# scattered-point interpolation (matching get_interpolated_minigrids_parallel.m's
+# scatteredInterpolant step), so it lives in the `nn` extra below alongside
+# torch rather than here.
 # `affine` is imported directly by utils/grid_meta.py, so it is named explicitly
 # rather than leaned on as a transitive rasterio dependency.
 #
@@ -68,6 +72,17 @@ dev = [
     "black",
     "flake8",
 ]
+# The range/sill neural-network estimator (geosigma.preprocess.rangesill) is
+# the only thing in the library that needs torch, and torch is a large,
+# platform-specific dependency, so it is an extra rather than a core
+# dependency (same reasoning as the deferred matplotlib-as-extra decision in
+# docs/deferred_decisions.md). `import geosigma.preprocess.rangesill` only
+# imports torch inside the functions/methods that actually use it, so the
+# rest of the library works without it installed.
+nn = [
+    "torch>=2.0",
+    "scipy>=1.10",
+]
 
 [project.urls]
 Homepage = "https://github.com/rbm-geus/GeoSigma"
@@ -89,6 +104,12 @@ include = [
 # geosigma/themes/ and are intentionally not packaged.
 [tool.setuptools]
 py-modules = ["ReadSurfer7"]
+
+# The bundled pretrained range/sill estimator weights (see
+# geosigma/preprocess/rangesill.py) ship as package data so they are present
+# in built/installed distributions, not just an editable checkout.
+[tool.setuptools.package-data]
+"geosigma.preprocess" = ["data/*.pt"]
 
 [tool.pytest.ini_options]
 # Put the repo root on sys.path so tests can import the top-level `utils`,

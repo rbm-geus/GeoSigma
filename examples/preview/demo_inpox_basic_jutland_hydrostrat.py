@@ -9,7 +9,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from utils import load_geotiff_grid, grid_coordinates_from_esri_meta
-from geosigma import draw_points_inpox, ftot_laplace,visualize_transfer_function
+from geosigma import draw_points_inpox, visualize_transfer_function
 
 # Data paths are relative to this file, so the demo runs from any directory.
 DATA = Path(__file__).resolve().parent.parent / "data"
@@ -17,18 +17,21 @@ DATA = Path(__file__).resolve().parent.parent / "data"
 # ============================================================
 # --- Load surface ---
 z, meta = load_geotiff_grid(str(DATA / "Jutland_hydrostrat_model" / "top_surface.tif"))
-#z, meta = load_geotiff_grid(str(DATA / "Jutland_hydrostrat_model" / "layer_4_bottom.tif"))
+# Swap for a deeper boundary:
+# str(DATA / "Jutland_hydrostrat_model" / "layer_4_bottom.tif")
 x, y, xx, yy = grid_coordinates_from_esri_meta(meta)
 
 # --- INPOX Parameters ---
+# Madsen et al. (2024) Table 1, real-world case (T4).
 ext_vals = {
-    "p0": 0.1,
-    "a": 0.5,
-    "b": 7,
-    "c": 0.5,
-    "d": -0.1,
-    "e": 1,
-    "g": 6,
+    "P0": 0.1,
+    "L0": 1.0,
+    "A": 1.5,
+    "B": 3.0,
+    "C": 5.0,
+    "D": 1.0,
+    "E": 0.8,
+    "g": 2.0,
     "x0": meta["xllcorner"],
     "y0": meta["yllcorner"],
 }
@@ -37,8 +40,7 @@ ext_vals = {
 # ============================================================
 # Figure 1: Vizualize the chosen transfer function
 # ============================================================
-visualize_transfer_function(z, ext_vals, dx=1.0, dy=1.0, lap_max=10)
-
+visualize_transfer_function(z, ext_vals, lap_max=10)
 
 
 # ============================================================
@@ -46,13 +48,16 @@ visualize_transfer_function(z, ext_vals, dx=1.0, dy=1.0, lap_max=10)
 # ============================================================
 
 
-points, plap, lapl, plap_extra = draw_points_inpox(z, ext_vals, dx=meta["cellsize"])
+points, details = draw_points_inpox(
+    z, ext_vals, dx=meta["cellsize"], dy=meta["cellsize"], return_details=True
+)
+lapl = details["laplacian"]
+plap = details["probability"]
+plap_extra = details["transfer"]
 
 lap_surface = lapl.ravel()
 actual_draw_percent = 100 * np.sum(points) / points.size
 print(f"Actual draw percentage: {actual_draw_percent:.2f} %")
-
-
 
 
 # ============================================================
@@ -66,17 +71,17 @@ axes[0, 0].set_title("Original surface")
 fig.colorbar(im0, ax=axes[0, 0])
 
 # --- Laplacian ---
-im1 = axes[0, 1].imshow(lapl,vmin=0,vmax=10)
+im1 = axes[0, 1].imshow(lapl, vmin=0, vmax=10)
 axes[0, 1].set_title("Laplacian")
 fig.colorbar(im1, ax=axes[0, 1])
 
 # --- Probability added map ---
-im2 = axes[0, 2].imshow(plap_extra,vmin=0,vmax=1)
+im2 = axes[0, 2].imshow(plap_extra, vmin=0, vmax=1)
 axes[0, 2].set_title("Probability change to base draw")
 fig.colorbar(im2, ax=axes[0, 2])
 
 # --- Probability map final ---
-im3 = axes[1, 0].imshow(plap,vmin=0,vmax=1)
+im3 = axes[1, 0].imshow(plap, vmin=0, vmax=1)
 axes[1, 0].set_title("Final probability normalized")
 fig.colorbar(im3, ax=axes[1, 0])
 
@@ -86,15 +91,15 @@ axes[1, 1].set_title(f"Sampled points ({actual_draw_percent:.2f}%)")
 fig.colorbar(im4, ax=axes[1, 1])
 
 # Repeated point draw
-Nrep = 50;
+Nrep = 50
 points_rep = np.zeros(np.shape(points))
 for i in range(Nrep):
-    points_i, _, _, _ = draw_points_inpox(z, ext_vals, dx=meta["cellsize"])
+    points_i = draw_points_inpox(z, ext_vals, dx=meta["cellsize"], dy=meta["cellsize"])
     points_rep += points_i
 
 
 # --- Sampled points ---
-im4 = axes[1, 2].imshow(points_rep,vmin=0,vmax=Nrep)
+im4 = axes[1, 2].imshow(points_rep, vmin=0, vmax=Nrep)
 axes[1, 2].set_title(f"Number of draws in {Nrep:.0f} extractions")
 fig.colorbar(im4, ax=axes[1, 2])
 
