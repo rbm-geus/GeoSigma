@@ -40,6 +40,8 @@ import pandas as pd
 
 from geosigma.config import RegionConfig
 from geosigma.themes import (
+    DANISH_CLASS_FMIN,
+    DANISH_DEPTH_RAMP,
     NODATA_VARIANCE,
     WellSet,
     apply_floor,
@@ -87,7 +89,7 @@ CONFIG = {
     # aligned with the model grid. Sets the correlation range (500/400/250/100 m in
     # the Danish specs). GEUS may share their national complexity proxy; otherwise
     # set to None => uniform class 1 (a single, long range everywhere).
-    "complexity_grid": "../matlab_reference/N-ret-mod---Source-main/Kompleksitetskort.grd",           # e.g. "my_site/complexity.tif"
+    "complexity_grid": "../../matlab_reference/N-ret-mod---Source-main/Kompleksitetskort.grd",
     # The grid does NOT need to match the model grid: origin shifts (e.g. half a cell),
     # larger extent or other cell size are handled by class_grid_to_model().
     # Class for model cells the complexity map does not cover. 0 = unknown, which
@@ -96,7 +98,8 @@ CONFIG = {
 
     # >>> YOUR DATA: model-quality ("modelling-area") class grid used by the model
     # theme = the background uncertainty where no data exist. Classes 0-5 with
-    # surface std roots 20/20/12.5/12.5/11.25/10 m (MATLAB Jylland defaults).
+    # surface std roots 20/20/12.5/12.5/11.25/10 m (the Danish calibration,
+    # geosigma.themes.DANISH_CLASS_FMIN, passed explicitly in combine_and_export).
     # None => one uniform class (MODEL_CLASS_IF_NO_GRID).
     "model_class_grid": None,          # e.g. "my_site/model_class.tif"
     "model_class_if_no_grid": 2,
@@ -392,9 +395,15 @@ def build_borehole_theme(wells_csv, grid_x, grid_y, n_layers, complexity, meta):
 # =============================================================================
 def combine_and_export(themes, model_class, terrain, bottom_stack, meta, out_dir):
     themes = dict(themes)
-    themes["model"] = model_theme(model_class, terrain, bottom_stack)   # background prior
-    all_themes = list(themes.values())
-    combined = combine_variances(all_themes)
+    data_themes = list(themes.values())
+    # Background prior: the model theme. The class floors and the depth ramp are
+    # the Danish calibration from the MATLAB code, chosen explicitly here (GeoSigma
+    # has no defaults for them); replace them with your own model's values.
+    prior = model_theme(model_class, terrain, bottom_stack,
+                        class_fmin=DANISH_CLASS_FMIN, depth_ramp=DANISH_DEPTH_RAMP)
+    themes["model"] = prior
+    all_themes = [*data_themes, prior]
+    combined = combine_variances(data_themes, prior=prior)
     final = apply_floor(combined, minimum_map(terrain, bottom_stack))
 
     # Outside the model (NaN surfaces) there is no variance.
