@@ -16,7 +16,7 @@ Every place you must supply your own data is marked with:   >>> YOUR DATA
 How to run
 ----------
     python geosigma_dk_workflow.py --demo              # full run on GeoSigma's Jutland sample + synthetic data
-    python geosigma_dk_workflow.py --write-templates   # writes empty input templates to ./templates/
+    python geosigma_dk_workflow.py --write-templates   # writes empty input templates to output/templates/
     python geosigma_dk_workflow.py                     # runs on YOUR data (edit CONFIG first)
 
 Install GeoSigma first (inside its repo):  pip install -e .
@@ -62,8 +62,12 @@ from utils import (
     load_surfer7_grid,
 )
 
+#: Folder of this script. Relative paths in CONFIG are resolved against it, so
+#: the workflow runs from any working directory.
+HERE = Path(__file__).resolve().parent
+
 # =============================================================================
-# CONFIG — edit this block for your site
+# CONFIG — edit this block for your site (relative paths: relative to HERE)
 # =============================================================================
 CONFIG = {
     # --- STEP 1: the deterministic hydrostratigraphic model --------------------
@@ -143,6 +147,23 @@ CONFIG = {
 # =============================================================================
 # Helpers
 # =============================================================================
+_PATH_KEYS = ("region_config", "complexity_grid", "model_class_grid", "wells_csv", "out_dir")
+
+
+def resolve_paths(conf, base=HERE):
+    """Return a copy of ``conf`` with every relative path made absolute under ``base``."""
+    base = Path(base)
+
+    def absolute(p):
+        return None if p is None else str(base / p) if not Path(p).is_absolute() else str(p)
+
+    conf = dict(conf)
+    for key in _PATH_KEYS:
+        conf[key] = absolute(conf.get(key))
+    conf["themes"] = [dict(t, manifest=absolute(t["manifest"])) for t in conf["themes"]]
+    return conf
+
+
 def load_grid(path):
     """Load a grid by extension. Returns (array north-up, meta)."""
     path = str(path)
@@ -539,6 +560,7 @@ def write_templates(out: Path, n_layers: int = 10):
 # Main
 # =============================================================================
 def run(conf):
+    conf = resolve_paths(conf)
     cfg, meta, grid_x, grid_y, terrain, bottom_stack = load_model(conf["region_config"])
     n_layers = cfg.n_modelled_layers
     complexity, model_class = load_support_grids(conf, terrain, meta)
@@ -558,14 +580,15 @@ def run(conf):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--demo", action="store_true", help="run on the bundled Jutland sample")
-    ap.add_argument("--geosigma-repo", default=".", help="path to the GeoSigma repo (for --demo)")
+    ap.add_argument("--geosigma-repo", default=str(HERE.parents[1]),
+                    help="path to the GeoSigma repo (for --demo)")
     ap.add_argument("--write-templates", action="store_true")
     ap.add_argument("--n-layers", type=int, default=10)
     args = ap.parse_args()
 
     if args.write_templates:
-        write_templates(Path("templates"), args.n_layers)
+        write_templates(HERE / "output" / "templates", args.n_layers)
     elif args.demo:
-        run(build_demo_inputs(Path(args.geosigma_repo).resolve(), Path("demo_site")))
+        run(build_demo_inputs(Path(args.geosigma_repo).resolve(), HERE / "output" / "demo_site"))
     else:
         run(CONFIG)

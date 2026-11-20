@@ -145,7 +145,7 @@ def export_realizations(reals, meta, cfg, out_dir):
 
 
 def main():
-    conf = workflow.CONFIG
+    conf = workflow.resolve_paths(workflow.CONFIG)
     final = workflow.run(conf)
     cfg, meta, grid_x, grid_y, terrain, bottom_stack = workflow.load_model(
         conf["region_config"]
