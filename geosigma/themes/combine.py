@@ -212,7 +212,11 @@ def corr_map(
     well_quality : ndarray, shape (nwells,)
         Per-well quality rating — the **full, unfiltered** per-well array (the
         MATLAB ``wellsp.bor_qual``), not pre-filtered to the zero-thickness
-        subset. See the note on quality indexing below.
+        subset. See the note on quality indexing below. Same convention as the
+        well theme (:class:`~geosigma.themes.well.WellSet`): **1 = best (most
+        reliable)**, higher = worse. The value is stamped into the grid as is,
+        so a source rated the other way round (high = good) must be converted
+        first.
     zero_thickness : ndarray of bool, shape (nwells,)
         True for wells with a defined zero layer thickness (the only ones used).
     dx, dy : float, optional
@@ -221,7 +225,8 @@ def corr_map(
     Returns
     -------
     ndarray, shape (ny, nx)
-        Tie grid, ``NaN`` away from zero-thickness wells. Row 0 is
+        Tie grid: the quality rating of the zero-thickness well in its cell
+        (1 = best), ``NaN`` away from zero-thickness wells. Row 0 is
         ``grid_y[0]``, the **south** edge, as everywhere in
         :mod:`geosigma.themes`; ``np.flipud`` it before pairing with a
         north-up raster.
