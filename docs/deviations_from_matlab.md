@@ -40,13 +40,17 @@ Module: `geosigma.preprocess.rangesill`. MATLAB:
 `get_interpolated_minigrids_parallel.m` with the pretrained network
 `FinalNetworkSillRangeBothNoNormalization.mat`.
 
-Reference for the range/sill network and the sill without noise bias:
-Falk & Madsen (2023), *GEUS Bulletin* 53 (see References).
+Reference for the range/sill network: Falk & Madsen (2023), *GEUS Bulletin*
+53 (see References).
 
-> **To be confirmed by Frederik:** the description of the sill (a sill
-> without noise bias, i.e. a network trained without noise) and the code
-> (the sill as a closed-form sample variance, see below) point to two
-> different mechanisms. The wording below is kept until this is confirmed.
+Two separate points, confirmed by Frederik Falk:
+
+- **The sill is the sample variance.** In its current form the estimator
+  does not predict the sill; it uses the sample variance of the window's
+  points (details below).
+- **"Trained without noise" refers to the training data, not the sill.** Each
+  realization used as a training example is no longer contaminated by
+  components from another realization.
 
 - **The network is retrained, not converted.** The MATLAB network cannot be
   loaded outside MATLAB, so GeoSigma ships a network trained from scratch on
@@ -202,7 +206,7 @@ remain bit-exact against the MATLAB reference grids after this change.
   clustering of statistics within stratigraphic models as exemplified in
   Denmark. *GEUS Bulletin*, 53.
   <https://doi.org/10.34194/geusb.v53.8353> (reference for the range/sill
-  network and the sill without noise bias)
+  network)
 - Madsen, R. B., Falk, F. A., Møller, I., & Høyer, A.-S. (2024).
   Introducing INPOX: a method for informed point extraction from geological
   2D surfaces exemplified on the Danish national hydrostratigraphic model.

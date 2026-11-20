@@ -157,7 +157,7 @@ Some core functions are adapted from the open-source [mGstat](https://github.com
 ## References
 
 - Madsen, R. B., Falk, F. A., Møller, I., Troldborg, L., & Høyer, A.-S. (2026). Probabilistic Modeling and Uncertainty Simulations of National-Scale Hydrostratigraphic Models: An Example from Denmark. *Mathematical Geosciences*. https://doi.org/10.1007/s11004-025-10263-9
-- Falk, F. A., & Madsen, R. B. (2023). Machine learning-based estimation and clustering of statistics within stratigraphic models as exemplified in Denmark. *GEUS Bulletin*, 53. https://doi.org/10.34194/geusb.v53.8353 (reference for the range/sill network and the sill without noise bias)
+- Falk, F. A., & Madsen, R. B. (2023). Machine learning-based estimation and clustering of statistics within stratigraphic models as exemplified in Denmark. *GEUS Bulletin*, 53. https://doi.org/10.34194/geusb.v53.8353 (reference for the range/sill network; the sill is the sample variance, and "trained without noise" means each training realization is free of components from other realizations, see `docs/deviations_from_matlab.md`)
 - Madsen, R. B., Falk, F. A., Møller, I., & Høyer, A.-S. (2024). Introducing INPOX: a method for informed point extraction from geological 2D surfaces exemplified on the Danish national hydrostratigraphic model. *GEUS Bulletin*, 57. https://doi.org/10.34194/geusb.v57.8364
 
 ## License
