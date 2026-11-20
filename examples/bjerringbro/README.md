@@ -13,7 +13,7 @@ Realizations drawn from these variance maps are a v1.0.0 preview: see
 | Area | 10 × 10 km, x 536 000–546 000, y 6 250 000–6 260 000 (EPSG:25832) |
 | Grid | 100 m, 100 × 100 cells |
 | Model | 15 layer boundaries below terrain (`region_config.json`) |
-| Data (Downloaded 2026/10/29) | 495 SkyTEM, 128 ground-TEM and 2 800 PACES soundings; 17 Jupiter wells (163 boundary picks, only wells deeper than 75 meters) |
+| Data (downloaded 2026-10-29) | 495 SkyTEM, 128 ground-TEM and 2 800 PACES soundings; 17 Jupiter wells (163 boundary picks, only wells deeper than 75 meters) |
 
 ## Layers
 
@@ -134,6 +134,125 @@ Each manifest's `_notes` records the source file and how many soundings were kep
   the cells per layer, so most of the area carries the model theme's background
   uncertainty (median std 6–28 m, increasing with depth).
 
-## Data
 
-Geophysical models: GERDA, GEUS. Boreholes: Jupiter, GEUS.
+## Data sources and credits
+
+This example uses data from the sources below. Each source remains the
+property of its provider and is used under the provider's terms; check those
+terms before reusing the data.
+
+### Geophysics: GERDA (GEUS)
+
+The SkyTEM, ground-TEM and PACES models come from GERDA, the Danish national
+geophysical database, maintained by the Geological Survey of Denmark and
+Greenland (GEUS).
+
+| | |
+|---|---|
+| Provider | GEUS |
+| Database | GERDA |
+| Export | Firebird export `bjerringbro_geofysik.fdb` (not included because of its size) |
+| Download date | 2026-10-29 |
+| GERDA version / export tool | https://data.geus.dk/geusmap/?mapname=gerda |
+| Area | x 536 000–546 000, y 6 250 000–6 260 000 (EPSG:25832) |
+| Used | 495 SkyTEM, 128 ground-TEM and 2 800 PACES soundings (after the filtering recorded in each manifest's `_notes`) |
+| Availability | Publicly available data |
+| Terms | Freely available for download from GEUS; see "Conditions for data re-use" in the GERDA metadata record: https://data.geus.dk/geonetwork/srv/api/records/a1b21c8e-2276-4386-abd2-3ef4ca5698b8 |
+| Redistribution | Redistribution of this excerpt in GeoSigma confirmed by the GERDA database owner at GEUS (2026-11-17) |
+
+### Boreholes: Jupiter (GEUS)
+
+The boreholes come from Jupiter, the Danish national borehole database,
+maintained by GEUS.
+
+| | |
+|---|---|
+| Provider | GEUS |
+| Database | Jupiter, table BOREHOLE |
+| Columns | `BOREHOLENO`, `XUTM`, `YUTM`, `ELEVATION`, `DRILLDEPTH`, `DRILLENDDATE` |
+| Download date | 2026-10-29 |
+| Export tool | https://data.geus.dk/geusmap/?mapname=jupiter |
+| Selection | Boreholes with a drill depth of ≥ 75 m inside x 532 260–549 700, y 6 247 225–6 263 500 (EPSG:25832). The extract `boringer/jupiter.csv` holds 65 boreholes; 17 of them lie inside the model grid and give 163 boundary picks. |
+| Availability | Publicly available data |
+| Terms | http://pubs.geus.net/betingelser/Jupiter_betingelser.pdf |
+
+Jupiter does not provide a borehole quality rating in this extract. The
+example therefore uses a **placeholder rule based on drilling year**
+(`data_prep/wells_to_csv.py`): quality 2 for boreholes drilled in 1980 or
+later, 3 for 1950–1979, and 4 if the year is unknown (quality 1 is not used).
+GeoSigma's convention is 1 = best … n = worst. This is an illustrative
+choice, not measured borehole quality; replace it with real ratings where
+available, and check the direction of the scale in the source data. The
+borehole uncertainty tables (`Ks`, `gradients`) are the Danish values from
+the original MATLAB code (`get_well_theme.m`, 2023-06-27), given as an
+example, not as defaults.
+
+The borehole search area is larger than the model grid (x 536 000–546 000,
+y 6 250 000–6 260 000). [TODO: confirm the reason, e.g. a buffer so that
+boreholes just outside the grid are included.]
+
+The extract was made with this query. [TODO: confirm the spelling of the
+end-date column in the query as run (`drillenddate` here, `drilendate` in an
+earlier draft; the extract's header is `DRILLENDDATE`).]
+```sql
+SELECT
+      [boreholeno],
+      [drilldepth],
+      [elevation],
+      [xutm],
+      [yutm],
+      [drillenddate],
+      [GEOM]
+FROM [pcjupiterxl].[dbo].[borehole]
+WHERE
+      [drilldepth] >= 75
+      AND [GEOM].STWithin(
+          geometry::STGeomFromText(
+              'POLYGON((
+                  532260 6247225,
+                  549700 6247225,
+                  549700 6263500,
+                  532260 6263500,
+                  532260 6247225
+              ))',
+              25832
+          )
+      ) = 1
+      ORDER BY boreholeno;
+```
+
+### Hydrostratigraphic layer model
+
+The 15 layer boundaries are read from
+`../data/Jutland_hydrostrat_model` (see `region_config.json`).
+
+| | |
+|---|---|
+| Model | FOHM Jylland, version [TODO: version as downloaded] [TODO: original FOHM or the locally updated version used for the nitrogen retention map 2025?] |
+| Provider | Miljøstyrelsen (Danish Environmental Protection Agency, MST) |
+| Distributed by | GEUS (official versions) |
+| Download date | 2026-03-20 |
+| Availability | Publicly available data |
+| Citation | Miljøstyrelsen (2020). FOHM – Fælles Offentlig Hydrologisk Model. [TODO: full reference as given in GEUS reports] |
+
+### Geological complexity map
+
+The correlation ranges depend on a geological complexity map. The example
+ships an excerpt of the national map, `data/complexity_bjerringbro.tif` (the
+model grid plus 1 km, cells unchanged), cut with `data_prep/crop_complexity.py`.
+It is a provisional proxy; see the limitations above and `docs/theme_format.md`.
+
+The map divides onshore Denmark into four classes of expected geological
+complexity, from high (C-index 1) to low (C-index 4). It describes roughly
+the uppermost 30 m of the subsurface, is a basic, low-resolution map (not
+intended for scales finer than about 1:300 000) and is described by its
+author as preliminary. This is why GeoSigma treats a complexity map as
+optional and why it is used here for the shallow layers only.
+
+| | |
+|---|---|
+| Producer | GEUS (P.B.E. Sandersen) |
+| Version / date | As published in GEUS Rapport 2021/37 (the map is unchanged since). The file used here is the June 2023 export from the national MATLAB reference data. |
+| Permission | Used and redistributed (excerpt) with the permission of the author, Peter B.E. Sandersen (GEUS) |
+| Citation | Sandersen, P.B.E. (2021). A basic geological complexity map for use in the implementation of the MapField concept. GEUS Rapport 2021/37. Geological Survey of Denmark and Greenland. https://data.geus.dk/pure-pdf/GEUS-R_2021_37_web.pdf |
+| Used in | Hansen, B., Aamand, J., Blicher-Mathiesen, G. et al. (2024). Assessing groundwater denitrification spatially is the key to targeted agricultural nitrogen regulation. *Scientific Reports* 14, 5538. https://doi.org/10.1038/s41598-024-55984-9 |
