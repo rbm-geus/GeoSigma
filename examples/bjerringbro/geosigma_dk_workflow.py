@@ -7,17 +7,19 @@ Built on GeoSigma v0.1.0 (https://github.com/rbm-geus/GeoSigma).
 
     STEP 1  Load your deterministic hydrostratigraphic model (terrain + layer bottoms)
     STEP 2  Load the optional support grids (geological complexity, model-quality class)
-    STEP 3  Build one variance "theme" per geophysical data source (SkyTEM, tTEM, PACES ...)
+    STEP 3  Build one variance "theme" per geophysical data source
+            (SkyTEM, tTEM, PACES ...)
     STEP 4  Build the borehole (well) theme from your layer picks
-    STEP 5  Add the model theme, combine all themes, apply the depth floor, export GeoTIFFs
+    STEP 5  Add the model theme, combine all themes, apply the depth floor,
+            export GeoTIFFs
 
 Every place you must supply your own data is marked with:   >>> YOUR DATA
 
 How to run
 ----------
-    python geosigma_dk_workflow.py --demo              # full run on GeoSigma's Jutland sample + synthetic data
-    python geosigma_dk_workflow.py --write-templates   # writes empty input templates to output/templates/
-    python geosigma_dk_workflow.py                     # runs on YOUR data (edit CONFIG first)
+    python geosigma_dk_workflow.py                    # this example (edit CONFIG)
+    python geosigma_dk_workflow.py --demo             # Jutland sample, synthetic
+    python geosigma_dk_workflow.py --write-templates  # templates in output/
 
 Install GeoSigma first (inside its repo):  pip install -e .
 
@@ -83,27 +85,25 @@ CONFIG = {
     # All grids must share the same extent/cell size; elevations in m (DVR90);
     # CRS normally EPSG:25832 (ETRS89 / UTM 32N).
     "region_config": "region_config.json",
-
     # --- STEP 2: support grids (optional) -------------------------------------
     # >>> YOUR DATA: geological-complexity class grid (integers 1-4, 0 = unknown),
     # aligned with the model grid. Sets the correlation range (500/400/250/100 m in
     # the Danish specs). GEUS may share their national complexity proxy; otherwise
     # set to None => uniform class 1 (a single, long range everywhere).
-    "complexity_grid": "data/complexity_bjerringbro.tif",  # excerpt, see data_prep/crop_complexity.py
+    # excerpt, see data_prep/crop_complexity.py
+    "complexity_grid": "data/complexity_bjerringbro.tif",
     # The grid does NOT need to match the model grid: origin shifts (e.g. half a cell),
     # larger extent or other cell size are handled by class_grid_to_model().
     # Class for model cells the complexity map does not cover. 0 = unknown, which
     # MASKS every geophysics theme there; set e.g. 2 if you prefer a moderate default.
     "complexity_fill_class": 0,
-
     # >>> YOUR DATA: model-quality ("modelling-area") class grid used by the model
     # theme = the background uncertainty where no data exist. Classes 0-5 with
     # surface std roots 20/20/12.5/12.5/11.25/10 m (the Danish calibration,
     # geosigma.themes.DANISH_CLASS_FMIN, passed explicitly in combine_and_export).
     # None => one uniform class (MODEL_CLASS_IF_NO_GRID).
-    "model_class_grid": None,          # e.g. "my_site/model_class.tif"
+    "model_class_grid": None,  # e.g. "my_site/model_class.tif"
     "model_class_if_no_grid": 2,
-
     # Danish two-regime split: 0-based index, in the variance stack, of the first
     # boundary that takes the PRE-QUATERNARY correlation range. Built-in Danish
     # specs use the Quaternary (complexity-graded) range above it.
@@ -114,9 +114,9 @@ CONFIG = {
     # limestone, chalk). The surfaces are layer BOTTOMS and stack index i is the
     # bottom of model layer i + 1, so the bottom of layer 10 (base of the
     # Quaternary, index 9) stays Quaternary and the pre-Quaternary regime starts
-    # at the bottom of layer 11 = index 10. Checked in tests/test_bjerringbro_example.py.
+    # at the bottom of layer 11 = index 10. Checked in
+    # tests/test_bjerringbro_example.py.
     "n_prereq": 10,
-
     # --- STEP 3: geophysical themes -------------------------------------------
     # One entry per data source. Each "manifest" is a ThemeData bundle
     # (manifest YAML + points CSV, see GeoSigma docs/theme_format.md;
@@ -133,10 +133,9 @@ CONFIG = {
     # or a path to your own YAML spec (see GeoSigma examples/theme_specs/).
     "themes": [
         {"name": "SkyTEM", "manifest": "geofysik/skytem/skytem.manifest.yaml"},
-        {"name": "TEM",   "manifest": "geofysik/fewtem/fewtem.manifest.yaml"},
-        {"name": "PACES",  "manifest": "geofysik/paces/paces.manifest.yaml"},
+        {"name": "TEM", "manifest": "geofysik/fewtem/fewtem.manifest.yaml"},
+        {"name": "PACES", "manifest": "geofysik/paces/paces.manifest.yaml"},
     ],
-
     # --- STEP 4: boreholes ------------------------------------------------------
     # >>> YOUR DATA: one CSV row per (borehole, layer boundary) pick.
     # Columns: well_id, x, y, layer (1-based modelled layer), z_boundary
@@ -146,26 +145,34 @@ CONFIG = {
     # Source: Jupiter (GEUS borehole database) + your geological interpretation.
     # Only add a row for a layer if the well actually reaches/informs it.
     # None => no well theme.
-    "wells_csv": "boringer/wells.csv",                 # e.g. "my_site/wells.csv"
-
+    "wells_csv": "boringer/wells.csv",  # e.g. "my_site/wells.csv"
     # --- STEP 5: output -----------------------------------------------------------
     "out_dir": "output/variance_maps",
-
 }
 
 
 # =============================================================================
 # Helpers
 # =============================================================================
-_PATH_KEYS = ("region_config", "complexity_grid", "model_class_grid", "wells_csv", "out_dir")
+_PATH_KEYS = (
+    "region_config",
+    "complexity_grid",
+    "model_class_grid",
+    "wells_csv",
+    "out_dir",
+)
 
 
 def resolve_paths(conf, base=HERE):
-    """Return a copy of ``conf`` with every relative path made absolute under ``base``."""
+    """Return a copy of ``conf`` with relative paths made absolute under ``base``."""
     base = Path(base)
 
     def absolute(p):
-        return None if p is None else str(base / p) if not Path(p).is_absolute() else str(p)
+        return (
+            None
+            if p is None
+            else str(base / p) if not Path(p).is_absolute() else str(p)
+        )
 
     conf = dict(conf)
     for key in _PATH_KEYS:
@@ -216,8 +223,10 @@ def load_model(region_config_path):
     terrain = np.flipud(top)
     bottom_stack = np.stack([np.flipud(b) for b in bottoms], axis=-1)
 
-    print(f"[1] Model '{cfg.name}': {terrain.shape[0]} x {terrain.shape[1]} cells "
-          f"@ {meta['dx']:.0f} m, {cfg.n_modelled_layers} modelled boundaries")
+    print(
+        f"[1] Model '{cfg.name}': {terrain.shape[0]} x {terrain.shape[1]} cells "
+        f"@ {meta['dx']:.0f} m, {cfg.n_modelled_layers} modelled boundaries"
+    )
     return cfg, meta, grid_x, grid_y, terrain, bottom_stack
 
 
@@ -240,23 +249,33 @@ def class_grid_to_model(path, model_meta, name, fill_class=0, nsub=4):
     vote. Ties go to the HIGHER class (= more complex = shorter correlation range =
     more conservative uncertainty). Cells with no valid sample get ``fill_class``.
     """
-    z, m = load_grid(path)                      # north-up, corner-referenced meta
-    z = np.flipud(z)                            # south-up like the engine
+    z, m = load_grid(path)  # north-up, corner-referenced meta
+    z = np.flipud(z)  # south-up like the engine
     mx, my = model_meta, m
 
     dx_off = my["xllcorner"] - mx["xllcorner"]
     dy_off = my["yllcorner"] - mx["yllcorner"]
-    same_cells = (abs(my["dx"] - mx["dx"]) < 1e-6 and abs(my["dy"] - mx["dy"]) < 1e-6)
-    snapped = (same_cells and abs(dx_off / mx["dx"] - round(dx_off / mx["dx"])) < 1e-6
-               and abs(dy_off / mx["dy"] - round(dy_off / mx["dy"])) < 1e-6)
-    print(f"[2] {name}: {m['ncols']} x {m['nrows']} cells @ {my['dx']:g} m, "
-          f"corner offset vs model: dx={dx_off:+g} m, dy={dy_off:+g} m "
-          f"-> {'cell edges coincide (crop/pad only)' if snapped else 'RESAMPLED by majority vote'}")
+    same_cells = abs(my["dx"] - mx["dx"]) < 1e-6 and abs(my["dy"] - mx["dy"]) < 1e-6
+    snapped = (
+        same_cells
+        and abs(dx_off / mx["dx"] - round(dx_off / mx["dx"])) < 1e-6
+        and abs(dy_off / mx["dy"] - round(dy_off / mx["dy"])) < 1e-6
+    )
+    print(
+        f"[2] {name}: {m['ncols']} x {m['nrows']} cells @ {my['dx']:g} m, "
+        f"corner offset vs model: dx={dx_off:+g} m, dy={dy_off:+g} m "
+        "-> "
+        + (
+            "cell edges coincide (crop/pad only)"
+            if snapped
+            else "RESAMPLED by majority vote"
+        )
+    )
 
-    gx, gy, _, _ = grid_coordinates_from_esri_meta(mx)           # model cell centres
-    off = ((np.arange(nsub) + 0.5) / nsub - 0.5)
-    sx = (gx[:, None] + off[None, :] * mx["dx"]).ravel()          # (nx*nsub,)
-    sy = (gy[:, None] + off[None, :] * mx["dy"]).ravel()          # (ny*nsub,)
+    gx, gy, _, _ = grid_coordinates_from_esri_meta(mx)  # model cell centres
+    off = (np.arange(nsub) + 0.5) / nsub - 0.5
+    sx = (gx[:, None] + off[None, :] * mx["dx"]).ravel()  # (nx*nsub,)
+    sy = (gy[:, None] + off[None, :] * mx["dy"]).ravel()  # (ny*nsub,)
     ix = np.floor((sx - my["xllcorner"]) / my["dx"]).astype(int)
     iy = np.floor((sy - my["yllcorner"]) / my["dy"]).astype(int)
     okx = (ix >= 0) & (ix < z.shape[1])
@@ -264,14 +283,16 @@ def class_grid_to_model(path, model_meta, name, fill_class=0, nsub=4):
 
     samples = np.full((iy.size, ix.size), np.nan)
     samples[np.ix_(oky, okx)] = z[np.ix_(iy[oky], ix[okx])]
-    samples[~np.isfinite(samples) | (samples <= 0)] = np.nan       # 0 = unknown: no vote
+    samples[~np.isfinite(samples) | (samples <= 0)] = np.nan  # 0 = unknown: no vote
     ny, nx = gy.size, gx.size
-    samples = samples.reshape(ny, nsub, nx, nsub).transpose(0, 2, 1, 3).reshape(ny, nx, -1)
+    samples = (
+        samples.reshape(ny, nsub, nx, nsub).transpose(0, 2, 1, 3).reshape(ny, nx, -1)
+    )
 
     out = np.full((ny, nx), int(fill_class), dtype=int)
     best = np.zeros((ny, nx), dtype=int)
     classes = np.unique(samples[np.isfinite(samples)]).astype(int)
-    for c in classes:                                  # ascending: ties -> higher class
+    for c in classes:  # ascending: ties -> higher class
         cnt = np.sum(samples == c, axis=-1)
         win = (cnt > 0) & (cnt >= best)
         out[win], best[win] = c, cnt[win]
@@ -279,25 +300,40 @@ def class_grid_to_model(path, model_meta, name, fill_class=0, nsub=4):
     n_cells = ny * nx
     ambiguous = np.sum((best > 0) & (best < samples.shape[-1]))
     missing = np.sum(best == 0)
-    print(f"    classes {classes.tolist()}; {ambiguous / n_cells:.0%} of model cells straddle "
-          f"several {name} cells; {missing / n_cells:.0%} outside/no-data -> class {fill_class}")
+    print(
+        f"    classes {classes.tolist()}; {ambiguous / n_cells:.0%} of model cells "
+        "straddle "
+        f"several {name} cells; {missing / n_cells:.0%} outside/no-data -> class "
+        f"{fill_class}"
+    )
     return out
 
 
 def load_support_grids(conf, terrain, meta):
     complexity = None
     if conf["complexity_grid"]:
-        complexity = class_grid_to_model(conf["complexity_grid"], meta, "complexity grid",
-                                         fill_class=conf.get("complexity_fill_class", 0))
+        complexity = class_grid_to_model(
+            conf["complexity_grid"],
+            meta,
+            "complexity grid",
+            fill_class=conf.get("complexity_fill_class", 0),
+        )
 
     if conf["model_class_grid"]:
-        model_class = class_grid_to_model(conf["model_class_grid"], meta, "model-class grid",
-                                          fill_class=conf["model_class_if_no_grid"])
+        model_class = class_grid_to_model(
+            conf["model_class_grid"],
+            meta,
+            "model-class grid",
+            fill_class=conf["model_class_if_no_grid"],
+        )
     else:
         model_class = np.full(terrain.shape, conf["model_class_if_no_grid"], dtype=int)
 
-    print(f"[2] Complexity grid: {'yes' if complexity is not None else 'none (uniform)'}; "
-          f"model classes present: {sorted(np.unique(model_class).tolist())}")
+    print(
+        "[2] Complexity grid: "
+        f"{'yes' if complexity is not None else 'none (uniform)'}; "
+        f"model classes present: {sorted(np.unique(model_class).tolist())}"
+    )
     return complexity, model_class
 
 
@@ -319,22 +355,29 @@ def build_geophysics_themes(conf, grid_x, grid_y, n_layers, complexity, meta):
             grid_meta=None if wants_external else meta,
         )
         if loaded.n_layers != n_layers:
-            raise ValueError(f"{manifest}: n_layers={loaded.n_layers}, model has {n_layers}")
+            raise ValueError(
+                f"{manifest}: n_layers={loaded.n_layers}, model has {n_layers}"
+            )
 
         spec_ref = loaded.spec_name
         if spec_ref.endswith((".yaml", ".yml")):
             spec_path = Path(spec_ref)
             if not spec_path.is_absolute():
                 spec_path = manifest.parent / spec_path
-            spec = load_spec_yaml(spec_path)          # your own uncertainty model
+            spec = load_spec_yaml(spec_path)  # your own uncertainty model
         else:
-            spec = resolve_theme_spec(spec_ref, n_prereq, loaded.spec_params)  # Danish built-in
+            spec = resolve_theme_spec(
+                spec_ref, n_prereq, loaded.spec_params
+            )  # Danish built-in
 
         grid = build_theme(loaded.data, spec, grid_x, grid_y, n_layers)
         themes[entry["name"]] = grid
         frac = np.mean(np.isfinite(grid) & (grid < NODATA_VARIANCE), axis=(0, 1))
-        print(f"[3] Theme {entry['name']:10s} ({spec.name}): {loaded.data.xs.size} points; "
-              "informed fraction per layer: " + " ".join(f"{f:.2f}" for f in frac))
+        print(
+            f"[3] Theme {entry['name']:10s} ({spec.name}): {loaded.data.xs.size} "
+            "points; "
+            "informed fraction per layer: " + " ".join(f"{f:.2f}" for f in frac)
+        )
     if not themes:
         print("[3] No geophysical themes configured")
     return themes
@@ -360,33 +403,51 @@ def build_borehole_theme(wells_csv, grid_x, grid_y, n_layers, complexity, meta):
 
     # Complexity class at each well (range comes from the class AT THE WELL).
     if complexity is not None:
-        ix = np.clip(((df.x.values - grid_x[0]) / meta["dx"] + 0.5).astype(int), 0, grid_x.size - 1)
-        iy = np.clip(((df.y.values - grid_y[0]) / meta["dy"] + 0.5).astype(int), 0, grid_y.size - 1)
+        ix = np.clip(
+            ((df.x.values - grid_x[0]) / meta["dx"] + 0.5).astype(int),
+            0,
+            grid_x.size - 1,
+        )
+        iy = np.clip(
+            ((df.y.values - grid_y[0]) / meta["dy"] + 0.5).astype(int),
+            0,
+            grid_y.size - 1,
+        )
         df["comp_class"] = complexity[iy, ix]
     else:
         df["comp_class"] = 1
 
     snap_layers, jup_layers = [], []
     for layer in range(1, n_layers + 1):
-        for src, out, grads, ks in (("snap", snap_layers, SNAP_GRADIENTS, SNAP_KS),
-                                    ("jupiter", jup_layers, JUP_GRADIENTS, JUP_KS)):
+        for src, out, grads, ks in (
+            ("snap", snap_layers, SNAP_GRADIENTS, SNAP_KS),
+            ("jupiter", jup_layers, JUP_GRADIENTS, JUP_KS),
+        ):
             sel = df[(df.layer == layer) & (df.source.str.lower() == src)]
             if sel.empty:
                 out.append(None)
                 continue
-            out.append(WellSet(
-                xs=sel.x.to_numpy(float),
-                ys=sel.y.to_numpy(float),
-                depth=np.maximum(sel.terrain.to_numpy(float) - sel.z_boundary.to_numpy(float), 0.0),
-                quality=sel.quality.to_numpy(int),
-                comp_class=sel.comp_class.to_numpy(int),
-                gradients=grads,
-                Ks=ks,
-            ))
+            out.append(
+                WellSet(
+                    xs=sel.x.to_numpy(float),
+                    ys=sel.y.to_numpy(float),
+                    depth=np.maximum(
+                        sel.terrain.to_numpy(float) - sel.z_boundary.to_numpy(float),
+                        0.0,
+                    ),
+                    quality=sel.quality.to_numpy(int),
+                    comp_class=sel.comp_class.to_numpy(int),
+                    gradients=grads,
+                    Ks=ks,
+                )
+            )
 
     grid = build_well_theme(grid_x, grid_y, snap_layers, jup_layers, search_radius=6)
-    print(f"[4] Well theme: {df.well_id.nunique() if 'well_id' in df else len(df)} wells, "
-          f"{len(df)} boundary picks")
+    print(
+        f"[4] Well theme: {df.well_id.nunique() if 'well_id' in df else len(df)} "
+        "wells, "
+        f"{len(df)} boundary picks"
+    )
     return grid
 
 
@@ -399,8 +460,13 @@ def combine_and_export(themes, model_class, terrain, bottom_stack, meta, out_dir
     # Background prior: the model theme. The class floors and the depth ramp are
     # the Danish calibration from the MATLAB code, chosen explicitly here (GeoSigma
     # has no defaults for them); replace them with your own model's values.
-    prior = model_theme(model_class, terrain, bottom_stack,
-                        class_fmin=DANISH_CLASS_FMIN, depth_ramp=DANISH_DEPTH_RAMP)
+    prior = model_theme(
+        model_class,
+        terrain,
+        bottom_stack,
+        class_fmin=DANISH_CLASS_FMIN,
+        depth_ramp=DANISH_DEPTH_RAMP,
+    )
     themes["model"] = prior
     all_themes = [*data_themes, prior]
     combined = combine_variances(data_themes, prior=prior)
@@ -411,10 +477,19 @@ def combine_and_export(themes, model_class, terrain, bottom_stack, meta, out_dir
     final = np.where(outside, np.nan, final)
 
     out_dir = Path(out_dir)
-    write_variance_stack(np.flip(final, axis=0), meta, out_dir)        # variance_NN.tif (kriging handoff)
-    write_display_stack(np.flip(final, axis=0), meta, out_dir,         # std_NN.tif (m, for QGIS)
-                        informed=np.flip(informed_mask(all_themes), axis=0))
-    print(f"[5] Combined {len(all_themes)} themes -> {out_dir}/variance_NN.tif and std_NN.tif")
+    write_variance_stack(
+        np.flip(final, axis=0), meta, out_dir
+    )  # variance_NN.tif (kriging handoff)
+    write_display_stack(
+        np.flip(final, axis=0),
+        meta,
+        out_dir,  # std_NN.tif (m, for QGIS)
+        informed=np.flip(informed_mask(all_themes), axis=0),
+    )
+    print(
+        f"[5] Combined {len(all_themes)} themes -> {out_dir}/variance_NN.tif and "
+        "std_NN.tif"
+    )
     med = np.sqrt(np.nanmedian(final, axis=(0, 1)))
     print("    median std per layer [m]: " + " ".join(f"{s:.1f}" for s in med))
     return final, themes
@@ -423,6 +498,7 @@ def combine_and_export(themes, model_class, terrain, bottom_stack, meta, out_dir
 def qa_figure(themes, final, grid_x, grid_y, out_png, layers=None):
     """Save a QA figure: per-theme coverage and final std."""
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
@@ -432,12 +508,15 @@ def qa_figure(themes, final, grid_x, grid_y, out_png, layers=None):
     names = [k for k in themes if k != "model"]
     ncols = len(layers)
     nrows = len(names) + 1
-    fig, axs = plt.subplots(nrows, ncols, figsize=(3.6 * ncols, 3.1 * nrows), squeeze=False)
+    fig, axs = plt.subplots(
+        nrows, ncols, figsize=(3.6 * ncols, 3.1 * nrows), squeeze=False
+    )
 
     def show(ax, img, title, cmap="viridis", vmin=None, vmax=None, label="std [m]"):
         im = ax.imshow(img, origin="lower", extent=ext, cmap=cmap, vmin=vmin, vmax=vmax)
         ax.set_title(title, fontsize=9)
-        ax.set_xticks([]); ax.set_yticks([])
+        ax.set_xticks([])
+        ax.set_yticks([])
         fig.colorbar(im, ax=ax, shrink=0.8, label=label)
 
     for r, name in enumerate(names):
@@ -460,7 +539,7 @@ def qa_figure(themes, final, grid_x, grid_y, out_png, layers=None):
 # DEMO — build a fake "Danish site" from GeoSigma's bundled Jutland sample
 # =============================================================================
 def build_demo_inputs(repo_root: Path, demo_dir: Path):
-    """Write region config, a SkyTEM ThemeData bundle and a wells CSV — synthetic data."""
+    """Write region config, a SkyTEM ThemeData bundle and a wells CSV (synthetic)."""
     rng = np.random.default_rng(1)
     demo_dir.mkdir(parents=True, exist_ok=True)
     sample = repo_root / "examples" / "data" / "Jutland_hydrostrat_model"
@@ -486,7 +565,8 @@ def build_demo_inputs(repo_root: Path, demo_dir: Path):
     ys = np.repeat(lines, along.size) + rng.normal(0, 10, xs.size)
     cols = {"x": xs, "y": ys}
     # DEMO SHORTCUT: real "thick" = thickness of the GERDA resistivity layer containing
-    # the boundary, not the hydrostratigraphic layer thickness. Use gerda_to_themedata.py.
+    # the boundary, not the hydrostratigraphic layer thickness. Use
+    # gerda_to_themedata.py.
     d, t = sample(xs, ys, depth), sample(xs, ys, thick)
     for s in range(n):
         cols[f"depth__L{s + 1:02d}"] = d[:, s]
@@ -496,8 +576,9 @@ def build_demo_inputs(repo_root: Path, demo_dir: Path):
     sky = demo_dir / "skytem"
     sky.mkdir(exist_ok=True)
     pd.DataFrame(cols).to_csv(sky / "skytem_points.csv", index=False)
-    (sky / "skytem.manifest.yaml").write_text(_manifest_text("SkyTEM (synthetic demo)",
-                                                             "skytem", "skytem_points.csv", n))
+    (sky / "skytem.manifest.yaml").write_text(
+        _manifest_text("SkyTEM (synthetic demo)", "skytem", "skytem_points.csv", n)
+    )
 
     # Wells: 60 boreholes, each informs the boundaries it reaches.
     rows = []
@@ -511,8 +592,18 @@ def build_demo_inputs(repo_root: Path, demo_dir: Path):
         q = int(rng.integers(1, 5))
         for s in range(n):
             if wterr[i] - wbot[i, s] <= wdepth[i] and np.isfinite(wbot[i, s]):
-                rows.append(dict(well_id=f"DGU{i:04d}", x=wx[i], y=wy[i], layer=s + 1,
-                                 z_boundary=wbot[i, s], terrain=wterr[i], quality=q, source=src))
+                rows.append(
+                    dict(
+                        well_id=f"DGU{i:04d}",
+                        x=wx[i],
+                        y=wy[i],
+                        layer=s + 1,
+                        z_boundary=wbot[i, s],
+                        terrain=wterr[i],
+                        quality=q,
+                        source=src,
+                    )
+                )
     pd.DataFrame(rows).to_csv(demo_dir / "wells.csv", index=False)
 
     return {
@@ -534,7 +625,7 @@ crs: EPSG:25832
 x_column: x
 y_column: y
 attributes:
-  depth:                    # depth BELOW TERRAIN of each modelled boundary at the sounding (m)
+  depth:                    # depth BELOW TERRAIN of each boundary at the sounding (m)
     per_layer: true
     prefix: depth__L
   thick:                    # thickness of each layer at the sounding (m)
@@ -543,7 +634,7 @@ attributes:
   doi:                      # depth of investigation of the sounding (m below terrain)
     per_layer: false
     column: doi
-complexity: {complexity}    # path to grid | none | external (= grid from the workflow script)
+complexity: {complexity}    # path to grid | none | external (= grid from the workflow)
 _notes:
   source: "YOUR DATA - describe the dataset (e.g. GERDA project id, contractor, year)"
   filtering: "YOUR DATA - e.g. removed coupled soundings; de-duplicated on (x, y)"
@@ -553,22 +644,44 @@ _notes:
 def write_templates(out: Path, n_layers: int = 10):
     out.mkdir(parents=True, exist_ok=True)
     (out / "skytem").mkdir(exist_ok=True)
-    cols = ["x", "y"] + [f"depth__L{i:02d}" for i in range(1, n_layers + 1)] \
-        + [f"thick__L{i:02d}" for i in range(1, n_layers + 1)] + ["doi"]
+    cols = (
+        ["x", "y"]
+        + [f"depth__L{i:02d}" for i in range(1, n_layers + 1)]
+        + [f"thick__L{i:02d}" for i in range(1, n_layers + 1)]
+        + ["doi"]
+    )
     pd.DataFrame(columns=cols).to_csv(out / "skytem" / "skytem_points.csv", index=False)
     (out / "skytem" / "skytem.manifest.yaml").write_text(
-        _manifest_text("SkyTEM <site>", "skytem", "skytem_points.csv", n_layers))
-    pd.DataFrame(columns=["well_id", "x", "y", "layer", "z_boundary", "terrain",
-                          "quality", "source"]).to_csv(out / "wells.csv", index=False)
-    layer_names = ["terrain"] + [f"layer_{i:02d}_bottom" for i in range(1, n_layers + 1)]
-    (out / "region_config.json").write_text(json.dumps({
-        "name": "<my Danish site>",
-        "layer_names": layer_names,
-        "has_bottom": False,
-        "surface_dir": "surfaces",
-        "file_ext": ".tif",
-        "crs": "EPSG:25832",
-    }, indent=2))
+        _manifest_text("SkyTEM <site>", "skytem", "skytem_points.csv", n_layers)
+    )
+    pd.DataFrame(
+        columns=[
+            "well_id",
+            "x",
+            "y",
+            "layer",
+            "z_boundary",
+            "terrain",
+            "quality",
+            "source",
+        ]
+    ).to_csv(out / "wells.csv", index=False)
+    layer_names = ["terrain"] + [
+        f"layer_{i:02d}_bottom" for i in range(1, n_layers + 1)
+    ]
+    (out / "region_config.json").write_text(
+        json.dumps(
+            {
+                "name": "<my Danish site>",
+                "layer_names": layer_names,
+                "has_bottom": False,
+                "surface_dir": "surfaces",
+                "file_ext": ".tif",
+                "crs": "EPSG:25832",
+            },
+            indent=2,
+        )
+    )
     print(f"Templates written to {out}/ (set n_layers to match your model: --n-layers)")
 
 
@@ -583,11 +696,13 @@ def run(conf):
 
     themes = build_geophysics_themes(conf, grid_x, grid_y, n_layers, complexity, meta)
     if conf["wells_csv"]:
-        themes["wells"] = build_borehole_theme(conf["wells_csv"], grid_x, grid_y,
-                                               n_layers, complexity, meta)
+        themes["wells"] = build_borehole_theme(
+            conf["wells_csv"], grid_x, grid_y, n_layers, complexity, meta
+        )
 
-    final, themes = combine_and_export(themes, model_class, terrain, bottom_stack,
-                                       meta, conf["out_dir"])
+    final, themes = combine_and_export(
+        themes, model_class, terrain, bottom_stack, meta, conf["out_dir"]
+    )
 
     qa_figure(themes, final, grid_x, grid_y, Path(conf["out_dir"]) / "qa_overview.png")
     return final
@@ -595,9 +710,14 @@ def run(conf):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
-    ap.add_argument("--demo", action="store_true", help="run on the bundled Jutland sample")
-    ap.add_argument("--geosigma-repo", default=str(HERE.parents[1]),
-                    help="path to the GeoSigma repo (for --demo)")
+    ap.add_argument(
+        "--demo", action="store_true", help="run on the bundled Jutland sample"
+    )
+    ap.add_argument(
+        "--geosigma-repo",
+        default=str(HERE.parents[1]),
+        help="path to the GeoSigma repo (for --demo)",
+    )
     ap.add_argument("--write-templates", action="store_true")
     ap.add_argument("--n-layers", type=int, default=10)
     args = ap.parse_args()
@@ -605,6 +725,10 @@ if __name__ == "__main__":
     if args.write_templates:
         write_templates(HERE / "output" / "templates", args.n_layers)
     elif args.demo:
-        run(build_demo_inputs(Path(args.geosigma_repo).resolve(), HERE / "output" / "demo_site"))
+        run(
+            build_demo_inputs(
+                Path(args.geosigma_repo).resolve(), HERE / "output" / "demo_site"
+            )
+        )
     else:
         run(CONFIG)

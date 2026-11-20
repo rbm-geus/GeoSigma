@@ -138,7 +138,9 @@ def export_realizations(reals, meta, cfg, out_dir):
                 transform=transform,
                 nodata=-9999.0,
             ) as ds:
-                ds.write(np.where(np.isfinite(data), data, -9999.0).astype("float32"), 1)
+                ds.write(
+                    np.where(np.isfinite(data), data, -9999.0).astype("float32"), 1
+                )
     # Ensemble statistics: an easy sanity check against the variance maps.
     np.save(out_dir / "ensemble_std.npy", np.nanstd(reals, axis=0))
     print(f"[R] Wrote {n_reals} realizations x {n_layers} surfaces to {out_dir}")

@@ -101,7 +101,9 @@ def crop(source, region_config, out, buffer_m=1000.0):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--source", required=True, help="national complexity map")
-    ap.add_argument("--region-config", required=True, help="the example's region_config.json")
+    ap.add_argument(
+        "--region-config", required=True, help="the example's region_config.json"
+    )
     ap.add_argument("--out", required=True, help="output GeoTIFF")
     ap.add_argument("--buffer-m", type=float, default=1000.0)
     a = ap.parse_args()

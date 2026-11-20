@@ -7,18 +7,23 @@ Replaces gerda_mdb.py.
     python gerda_db.py gerda_export.fdb                         # whole database -> CSV
     python gerda_db.py gerda_export.fdb out.csv --bbox 571800,6123300,580000,6129800
     python gerda_db.py gerda_export.fdb out.csv --datatype skytem,tem
-    python gerda_db.py gerda_export.fdb --schema                # list tables/columns (diagnostics)
+    python gerda_db.py gerda_export.fdb --schema   # list tables/columns (diagnostics)
 
 GERDA tables used (same schema in both formats):
-    odvpos    one row per 1D model position: model, position, xutm, yutm, elevation, numlayers
-    odvlayer  one row per resistivity layer: model, position, layer, rho, depbottom (, deptop)
-    odvdoi    depth of investigation per position: doiupper (threshold 1.2), doilower (0.6)
+    odvpos    one row per 1D model position: model, position, xutm, yutm,
+              elevation, numlayers
+    odvlayer  one row per resistivity layer: model, position, layer, rho,
+              depbottom (, deptop)
+    odvdoi    depth of investigation per position: doiupper (threshold 1.2),
+              doilower (0.6)
     odvmodse  model -> dataset, datatype (paces, skytem, tem, mep ...)
     dataset   acquisition date (recstartda)
-    optional: temhea/skyhea/mephea/hemhea (acquisition subtype), onedvmod (inversion type)
+    optional: temhea/skyhea/mephea/hemhea (acquisition subtype),
+              onedvmod (inversion type)
 
 Output columns: model_id, x, y, elevation, layer_no, depth_top, depth_bot, rho,
-doi, doi_upper, year, datatype, subtype, inversion, numlayers, gerda_model, gerda_position.
+doi, doi_upper, year, datatype, subtype, inversion, numlayers, gerda_model,
+gerda_position.
 
 Firebird
 --------
@@ -66,8 +71,10 @@ import pandas as pd
 # >>> YOUR SETTINGS (Firebird)
 # ------------------------------------------------------------------------------
 FIREBIRD = {
-    # "localhost" = use the Firebird server on this PC (normal with Workbench/GeoScene3D).
-    # None = embedded mode (no server; needs an embedded engine, e.g. fbembed.dll for 2.5).
+    # "localhost" = use the Firebird server on this PC (normal with
+    # Workbench/GeoScene3D).
+    # None = embedded mode (no server; needs an embedded engine, e.g. fbembed.dll for
+    # 2.5).
     "host": os.environ.get("GERDA_FB_HOST", "localhost") or None,
     "user": os.environ.get("GERDA_FB_USER", "SYSDBA"),
     "password": os.environ.get("GERDA_FB_PASSWORD", "masterkey"),
@@ -83,24 +90,33 @@ DB_EXT = ACCESS_EXT + FIREBIRD_EXT
 
 TABLES = ("odvpos", "odvlayer", "odvdoi", "odvmodse", "dataset")
 OPTIONAL = ("temhea", "skyhea", "mephea", "hemhea", "onedvmod")
-_TEXT_COLS = ("recstartda", "datatype", "datsubtype", "temsubtype", "mepsubtype",
-              "hemsubtype", "modsubtype")
+_TEXT_COLS = (
+    "recstartda",
+    "datatype",
+    "datsubtype",
+    "temsubtype",
+    "mepsubtype",
+    "hemsubtype",
+    "modsubtype",
+)
 
 # Columns read per table. Required ones must exist; the rest become NULL if absent.
 COLUMNS = {
-    "odvpos":   (["model", "position", "xutm", "yutm"], ["elevation", "numlayers"]),
+    "odvpos": (["model", "position", "xutm", "yutm"], ["elevation", "numlayers"]),
     "odvlayer": (["model", "position", "layer", "depbottom"], ["rho", "deptop"]),
-    "odvdoi":   (["model", "position"], ["doiupper", "doilower"]),
+    "odvdoi": (["model", "position"], ["doiupper", "doilower"]),
     "odvmodse": (["model", "dataset"], ["datatype"]),
-    "dataset":  (["dataset"], ["recstartda"]),
-    "temhea":   (["dataset"], ["temsubtype"]),
-    "skyhea":   (["dataset"], ["temsubtype"]),
-    "mephea":   (["dataset"], ["mepsubtype"]),
-    "hemhea":   (["dataset"], ["hemsubtype"]),
+    "dataset": (["dataset"], ["recstartda"]),
+    "temhea": (["dataset"], ["temsubtype"]),
+    "skyhea": (["dataset"], ["temsubtype"]),
+    "mephea": (["dataset"], ["mepsubtype"]),
+    "hemhea": (["dataset"], ["hemsubtype"]),
     "onedvmod": (["model"], ["modsubtype"]),
 }
 # POSITION is a reserved word in Firebird, so an export may quote or rename it.
-ALIASES = {"position": ["position", "position_", "pos", "posno", "positionno", "modposition"]}
+ALIASES = {
+    "position": ["position", "position_", "pos", "posno", "positionno", "modposition"]
+}
 
 
 # ==============================================================================
@@ -108,14 +124,16 @@ ALIASES = {"position": ["position", "position_", "pos", "posno", "positionno", "
 # ==============================================================================
 def _fb_connect(path: Path, conf=FIREBIRD):
     host = conf["host"]
-    attempts = [host] + ([None] if host else [])          # fall back to embedded once
+    attempts = [host] + ([None] if host else [])  # fall back to embedded once
     errors = []
     try:
         import fdb as drv
+
         kind = "fdb"
     except ImportError:
         try:
             from firebird import driver as drv
+
             kind = "firebird-driver"
         except ImportError:
             sys.exit("No Firebird driver for Python. Run:  pip install fdb")
@@ -123,45 +141,79 @@ def _fb_connect(path: Path, conf=FIREBIRD):
         dsn = f"{h}:{path}" if h else str(path)
         try:
             if kind == "fdb":
-                kw = dict(dsn=dsn, user=conf["user"], password=conf["password"],
-                          charset=conf["charset"])
+                kw = dict(
+                    dsn=dsn,
+                    user=conf["user"],
+                    password=conf["password"],
+                    charset=conf["charset"],
+                )
                 if conf["client_library"]:
                     kw["fb_library_name"] = conf["client_library"]
                 con = drv.connect(**kw)
             else:
                 if conf["client_library"]:
                     drv.driver_config.fb_client_library.value = conf["client_library"]
-                con = drv.connect(dsn, user=conf["user"], password=conf["password"],
-                                  charset=conf["charset"])
+                con = drv.connect(
+                    dsn,
+                    user=conf["user"],
+                    password=conf["password"],
+                    charset=conf["charset"],
+                )
             mode = f"server '{h}'" if h else "embedded"
             if errors:
-                print(f"note: server connection failed, using embedded mode instead:\n{errors[0]}")
+                print(
+                    "note: server connection failed, using embedded mode "
+                    f"instead:\n{errors[0]}"
+                )
             print(f"Firebird: connected via {kind}, {mode}")
             return con
-        except Exception as exc:                          # noqa: BLE001 - report below
-            errors.append(f"  {dsn!r}: {str(exc).strip().splitlines()[0] if str(exc).strip() else exc}"
-                          + "".join(f"\n      {ln.strip()}" for ln in str(exc).splitlines()[1:4]))
+        except Exception as exc:  # noqa: BLE001 - report below
+            errors.append(
+                f"  {dsn!r}: "
+                f"{str(exc).strip().splitlines()[0] if str(exc).strip() else exc}"
+                + "".join(f"\n      {ln.strip()}" for ln in str(exc).splitlines()[1:4])
+            )
     text = "\n".join(errors)
     hint = []
     low = text.lower()
     if "on-disk structure" in low or "ods" in low:
-        hint.append("The file was made by another Firebird version than the one you are using. "
-                    "GERDA uses Firebird 2.5: use a 2.5 server/client (Workbench/GeoScene3D "
-                    "install), or gbak backup (2.5) + restore (newer).")
+        hint.append(
+            "The file was made by another Firebird version than the one you are using. "
+            "GERDA uses Firebird 2.5: use a 2.5 server/client (Workbench/GeoScene3D "
+            "install), or gbak backup (2.5) + restore (newer)."
+        )
     if "network request" in low or "connection refused" in low or "connect" in low:
-        hint.append("No Firebird server answered. Start the Firebird service, or set "
-                    "FIREBIRD['host'] = None for embedded mode.")
+        hint.append(
+            "No Firebird server answered. Start the Firebird service, or set "
+            "FIREBIRD['host'] = None for embedded mode."
+        )
     if "user name and password" in low or "login" in low or "authentication" in low:
-        hint.append("Wrong user/password. Defaults are SYSDBA / masterkey; set GERDA_FB_USER "
-                    "and GERDA_FB_PASSWORD.")
-    if "client library" in low or "fbclient" in low or "fbembed" in low or "load" in low:
-        hint.append("Python can't find the Firebird client library. Set FIREBIRD['client_library'] "
-                    "(or GERDA_FB_CLIENT) to the full path of fbclient.dll — same 32/64-bit as Python.")
+        hint.append(
+            "Wrong user/password. Defaults are SYSDBA / masterkey; set GERDA_FB_USER "
+            "and GERDA_FB_PASSWORD."
+        )
+    if (
+        "client library" in low
+        or "fbclient" in low
+        or "fbembed" in low
+        or "load" in low
+    ):
+        hint.append(
+            "Python can't find the Firebird client library. Set "
+            "FIREBIRD['client_library'] "
+            "(or GERDA_FB_CLIENT) to the full path of fbclient.dll — same 32/64-bit "
+            "as Python."
+        )
     if "i/o error" in low or "no such file" in low or "cannot find" in low:
-        hint.append("The server cannot open the file. The path must be on a LOCAL disk of the "
-                    "server PC (not a network drive), and the Firebird service must have read access.")
-    raise RuntimeError(f"Could not open {path} with Firebird:\n{text}\n\n" +
-                       ("\n".join("-> " + h for h in hint) if hint else ""))
+        hint.append(
+            "The server cannot open the file. The path must be on a LOCAL disk of the "
+            "server PC (not a network drive), and the Firebird service must have read "
+            "access."
+        )
+    raise RuntimeError(
+        f"Could not open {path} with Firebird:\n{text}\n\n"
+        + ("\n".join("-> " + h for h in hint) if hint else "")
+    )
 
 
 def _fb_schema(cur):
@@ -169,7 +221,8 @@ def _fb_schema(cur):
         "SELECT TRIM(rf.RDB$RELATION_NAME), TRIM(rf.RDB$FIELD_NAME) "
         "FROM RDB$RELATION_FIELDS rf JOIN RDB$RELATIONS r "
         "ON r.RDB$RELATION_NAME = rf.RDB$RELATION_NAME "
-        "WHERE COALESCE(r.RDB$SYSTEM_FLAG, 0) = 0 ORDER BY 1, rf.RDB$FIELD_POSITION")
+        "WHERE COALESCE(r.RDB$SYSTEM_FLAG, 0) = 0 ORDER BY 1, rf.RDB$FIELD_POSITION"
+    )
     schema = {}
     for tab, col in cur.fetchall():
         schema.setdefault(tab.lower(), {"_name": tab})[col.lower()] = col
@@ -190,8 +243,10 @@ def _fb_cols(schema, table, need_all=True):
         if found is None:
             if canon in req and need_all:
                 cols = [c for c in info if c != "_name"]
-                raise RuntimeError(f"Table {info['_name']} has no column for '{canon}'. "
-                                   f"Columns: {cols}. Add the right name to ALIASES in gerda_db.py.")
+                raise RuntimeError(
+                    f"Table {info['_name']} has no column for '{canon}'. "
+                    f"Columns: {cols}. Add the right name to ALIASES in gerda_db.py."
+                )
             out.append((canon, None))
         else:
             out.append((canon, found))
@@ -219,22 +274,29 @@ def _read_tables_firebird(path: Path, bbox=None, datatypes=None):
         schema = _fb_schema(cur)
         missing = [t for t in TABLES if t not in schema]
         if missing:
-            raise RuntimeError(f"{path}: tables {missing} not found. Tables in the file: "
-                               f"{sorted(schema)[:40]} (is this a GERDA model export?)")
+            raise RuntimeError(
+                f"{path}: tables {missing} not found. Tables in the file: "
+                f"{sorted(schema)[:40]} (is this a GERDA model export?)"
+            )
 
         # Position filter, evaluated inside Firebird on odvpos (alias p).
         pcols = dict(_fb_cols(schema, "odvpos"))
         where, params = [], []
         if bbox is not None:
-            where.append(f"p.{_q(pcols['xutm'])} BETWEEN ? AND ? AND p.{_q(pcols['yutm'])} BETWEEN ? AND ?")
+            where.append(
+                f"p.{_q(pcols['xutm'])} BETWEEN ? AND ? AND p.{_q(pcols['yutm'])} "
+                "BETWEEN ? AND ?"
+            )
             params += [float(bbox[0]), float(bbox[2]), float(bbox[1]), float(bbox[3])]
         if datatypes:
             mc = dict(_fb_cols(schema, "odvmodse"))
             if mc["datatype"]:
                 marks = ",".join("?" * len(datatypes))
-                where.append(f"EXISTS (SELECT 1 FROM {_q(schema['odvmodse']['_name'])} s "
-                             f"WHERE s.{_q(mc['model'])} = p.{_q(pcols['model'])} "
-                             f"AND LOWER(s.{_q(mc['datatype'])}) IN ({marks}))")
+                where.append(
+                    f"EXISTS (SELECT 1 FROM {_q(schema['odvmodse']['_name'])} s "
+                    f"WHERE s.{_q(mc['model'])} = p.{_q(pcols['model'])} "
+                    f"AND LOWER(s.{_q(mc['datatype'])}) IN ({marks}))"
+                )
                 params += [d.lower() for d in datatypes]
         where_sql = (" WHERE " + " AND ".join(where)) if where else ""
 
@@ -244,28 +306,44 @@ def _read_tables_firebird(path: Path, bbox=None, datatypes=None):
         out = {}
         pos_cols = _fb_cols(schema, "odvpos")
         out["odvpos"] = _fb_fetch(
-            cur, f"SELECT {select('p', pos_cols)} FROM {_q(schema['odvpos']['_name'])} p{where_sql}",
-            params, [c for c, _ in pos_cols], "odvpos")
+            cur,
+            f"SELECT {select('p', pos_cols)} FROM {_q(schema['odvpos']['_name'])} "
+            f"p{where_sql}",
+            params,
+            [c for c, _ in pos_cols],
+            "odvpos",
+        )
 
         for t in ("odvlayer", "odvdoi"):
             cols = _fb_cols(schema, t)
             tc = dict(cols)
-            join = (f"JOIN {_q(schema['odvpos']['_name'])} p ON p.{_q(pcols['model'])} = x.{_q(tc['model'])} "
-                    f"AND p.{_q(pcols['position'])} = x.{_q(tc['position'])}")
-            sql = f"SELECT {select('x', cols)} FROM {_q(schema[t]['_name'])} x " + \
-                  (join + where_sql if where else "")
-            out[t] = _fb_fetch(cur, sql, params if where else [], [c for c, _ in cols], t)
+            join = (
+                f"JOIN {_q(schema['odvpos']['_name'])} p ON p.{_q(pcols['model'])} = "
+                f"x.{_q(tc['model'])} "
+                f"AND p.{_q(pcols['position'])} = x.{_q(tc['position'])}"
+            )
+            sql = f"SELECT {select('x', cols)} FROM {_q(schema[t]['_name'])} x " + (
+                join + where_sql if where else ""
+            )
+            out[t] = _fb_fetch(
+                cur, sql, params if where else [], [c for c, _ in cols], t
+            )
 
         for t in ("odvmodse", "dataset") + OPTIONAL:
             if t not in schema:
                 out[t] = pd.DataFrame()
                 continue
             cols = _fb_cols(schema, t, need_all=t in TABLES)
-            if dict(cols)[COLUMNS[t][0][0]] is None:      # optional table without its key
+            if dict(cols)[COLUMNS[t][0][0]] is None:  # optional table without its key
                 out[t] = pd.DataFrame()
                 continue
-            out[t] = _fb_fetch(cur, f"SELECT {select('x', cols)} FROM {_q(schema[t]['_name'])} x",
-                               [], [c for c, _ in cols], t)
+            out[t] = _fb_fetch(
+                cur,
+                f"SELECT {select('x', cols)} FROM {_q(schema[t]['_name'])} x",
+                [],
+                [c for c, _ in cols],
+                t,
+            )
     finally:
         con.close()
     return out
@@ -278,7 +356,10 @@ def print_schema(path):
         schema = _fb_schema(con.cursor())
         con.close()
         for t in sorted(schema):
-            print(f"{schema[t]['_name']}: {', '.join(v for k, v in schema[t].items() if k != '_name')}")
+            print(
+                f"{schema[t]['_name']}: "
+                f"{', '.join(v for k, v in schema[t].items() if k != '_name')}"
+            )
     else:
         for t, df in _read_tables_access(path).items():
             print(f"{t}: {', '.join(df.columns)}")
@@ -293,9 +374,12 @@ def _odbc_connect(mdb_path: Path):
 
     drivers = [d for d in pyodbc.drivers() if "Access" in d]
     if not drivers:
-        sys.exit("No Microsoft Access ODBC driver found. Install the 'Microsoft Access Database "
-                 "Engine' with the SAME bitness (64-bit) as your Python.\n"
-                 f"Drivers visible to this Python: {pyodbc.drivers()}")
+        sys.exit(
+            "No Microsoft Access ODBC driver found. Install the 'Microsoft Access "
+            "Database "
+            "Engine' with the SAME bitness (64-bit) as your Python.\n"
+            f"Drivers visible to this Python: {pyodbc.drivers()}"
+        )
     driver = next((d for d in drivers if "accdb" in d), drivers[0])
 
     def connect(p):
@@ -307,6 +391,7 @@ def _odbc_connect(mdb_path: Path):
         # Typical causes: æøå or other non-ASCII characters, ';' in the path,
         # OneDrive/SharePoint or very long paths. Retry from a plain temp copy.
         import tempfile
+
         tmpdir = Path(tempfile.mkdtemp(prefix="gerda_"))
         tmp = tmpdir / "gerda_export.mdb"
         shutil.copy2(mdb_path, tmp)
@@ -315,12 +400,17 @@ def _odbc_connect(mdb_path: Path):
         except pyodbc.Error:
             shutil.rmtree(tmpdir, ignore_errors=True)
             raise RuntimeError(
-                f"Access driver could not open {mdb_path} (also not as a temp copy {tmp}).\n"
+                f"Access driver could not open {mdb_path} (also not as a temp copy "
+                f"{tmp}).\n"
                 f"Original error: {exc}\n"
-                "Try: copy the file to C:\\temp\\paces.mdb and pass that path; check the file "
+                "Try: copy the file to C:\\temp\\paces.mdb and pass that path; check "
+                "the file "
                 "opens in Access; make sure the download finished (file not 0 bytes)."
             ) from exc
-        print(f"note: opened a temporary copy ({tmp}); the original path was rejected by the driver")
+        print(
+            f"note: opened a temporary copy ({tmp}); the original path was rejected "
+            "by the driver"
+        )
         return con, tmpdir
 
 
@@ -340,7 +430,10 @@ def _read_tables_access(mdb_path: Path):
     try:
         import pyodbc
     except ImportError:
-        sys.exit("Install mdbtools (Linux/macOS) or pyodbc + the Access ODBC driver (Windows).")
+        sys.exit(
+            "Install mdbtools (Linux/macOS) or pyodbc + the Access ODBC driver "
+            "(Windows)."
+        )
     con, tmpdir = _odbc_connect(mdb_path)
     out = {}
     try:
@@ -354,7 +447,9 @@ def _read_tables_access(mdb_path: Path):
                 out[t] = pd.DataFrame()
                 continue
             cols = [c[0] for c in cur.description]
-            out[t] = pd.DataFrame.from_records([tuple(r) for r in cur.fetchall()], columns=cols)
+            out[t] = pd.DataFrame.from_records(
+                [tuple(r) for r in cur.fetchall()], columns=cols
+            )
     finally:
         con.close()
         if tmpdir:
@@ -370,7 +465,10 @@ def _filter_access(t, bbox, datatypes):
         keep &= pos.xutm.between(bbox[0], bbox[2]) & pos.yutm.between(bbox[1], bbox[3])
     if datatypes and "datatype" in t["odvmodse"]:
         ms = t["odvmodse"]
-        ok = ms.loc[ms.datatype.astype(str).str.lower().isin([d.lower() for d in datatypes]), "model"]
+        ok = ms.loc[
+            ms.datatype.astype(str).str.lower().isin([d.lower() for d in datatypes]),
+            "model",
+        ]
         keep &= pos.model.isin(ok)
     if keep.all():
         return t
@@ -396,7 +494,7 @@ def _clean(t):
                 conv = pd.to_numeric(df[c], errors="coerce")
                 if conv.notna().sum() == df[c].notna().sum():
                     df[c] = conv
-        for canon, alts in ALIASES.items():           # renamed POSITION column etc.
+        for canon, alts in ALIASES.items():  # renamed POSITION column etc.
             if canon not in df:
                 for a in alts:
                     if a in df:
@@ -408,8 +506,10 @@ def _clean(t):
 def _assemble(t, doi_column="doilower"):
     pos, lay, doi = t["odvpos"], t["odvlayer"], t["odvdoi"]
     if pos.empty or lay.empty:
-        sys.exit("No 1D models found (odvpos/odvlayer empty) — wrong area/datatype filter, "
-                 "or an export with raw data only?")
+        sys.exit(
+            "No 1D models found (odvpos/odvlayer empty) — wrong area/datatype filter, "
+            "or an export with raw data only?"
+        )
     for c in ("elevation", "numlayers"):
         if c not in pos:
             pos[c] = np.nan
@@ -420,8 +520,11 @@ def _assemble(t, doi_column="doilower"):
         if c not in doi:
             doi[c] = np.nan
 
-    ds = t["dataset"][["dataset", "recstartda"]].copy() if "recstartda" in t["dataset"] \
+    ds = (
+        t["dataset"][["dataset", "recstartda"]].copy()
+        if "recstartda" in t["dataset"]
         else t["dataset"][["dataset"]].assign(recstartda=pd.NaT)
+    )
     ds["year"] = pd.to_datetime(ds.recstartda, errors="coerce", format="mixed").dt.year
     ms = t["odvmodse"]
     if "datatype" not in ms:
@@ -429,48 +532,103 @@ def _assemble(t, doi_column="doilower"):
     mset = ms[["model", "dataset", "datatype"]].merge(ds, on="dataset", how="left")
 
     sub = []
-    for tab, col in (("temhea", "temsubtype"), ("skyhea", "temsubtype"),
-                     ("mephea", "mepsubtype"), ("hemhea", "hemsubtype")):
+    for tab, col in (
+        ("temhea", "temsubtype"),
+        ("skyhea", "temsubtype"),
+        ("mephea", "mepsubtype"),
+        ("hemhea", "hemsubtype"),
+    ):
         h = t.get(tab, pd.DataFrame())
         if not h.empty and col in h and "dataset" in h:
             sub.append(h[["dataset", col]].rename(columns={col: "subtype"}))
     if sub:
-        mset = mset.merge(pd.concat(sub).dropna().drop_duplicates("dataset"), on="dataset", how="left")
+        mset = mset.merge(
+            pd.concat(sub).dropna().drop_duplicates("dataset"), on="dataset", how="left"
+        )
     else:
         mset["subtype"] = np.nan
-    mset = mset.groupby("model").agg(year=("year", "max"), datatype=("datatype", "first"),
-                                     subtype=("subtype", "first"))
+    mset = mset.groupby("model").agg(
+        year=("year", "max"),
+        datatype=("datatype", "first"),
+        subtype=("subtype", "first"),
+    )
     inv = t.get("onedvmod", pd.DataFrame())
     if not inv.empty and "modsubtype" in inv:
-        mset = mset.join(inv.drop_duplicates("model").set_index("model")["modsubtype"].rename("inversion"))
+        mset = mset.join(
+            inv.drop_duplicates("model")
+            .set_index("model")["modsubtype"]
+            .rename("inversion")
+        )
     else:
         mset["inversion"] = np.nan
 
     lay = lay.sort_values(["model", "position", "layer"]).copy()
-    # deptop is often empty in GERDA: top of layer n = bottom of layer n-1 (0 for layer 1).
+    # deptop is often empty in GERDA: top of layer n = bottom of layer n-1 (0 for layer
+    # 1).
     prev_bot = lay.groupby(["model", "position"]).depbottom.shift(1)
     lay["depth_top"] = lay.deptop.where(lay.deptop.notna(), prev_bot)
-    lay.loc[lay.layer == lay.groupby(["model", "position"]).layer.transform("min"), "depth_top"] = \
-        lay.depth_top.fillna(0.0)
-    lay["depth_bot"] = lay.depbottom          # NaN for the bottom half-space
+    lay.loc[
+        lay.layer == lay.groupby(["model", "position"]).layer.transform("min"),
+        "depth_top",
+    ] = lay.depth_top.fillna(0.0)
+    lay["depth_bot"] = lay.depbottom  # NaN for the bottom half-space
 
-    df = (lay[["model", "position", "layer", "depth_top", "depth_bot", "rho"]]
-          .merge(pos[["model", "position", "xutm", "yutm", "elevation", "numlayers"]],
-                 on=["model", "position"])
-          .merge(doi[["model", "position", "doiupper", "doilower"]].drop_duplicates(["model", "position"]),
-                 on=["model", "position"], how="left")
-          .merge(mset, left_on="model", right_index=True, how="left"))
+    df = (
+        lay[["model", "position", "layer", "depth_top", "depth_bot", "rho"]]
+        .merge(
+            pos[["model", "position", "xutm", "yutm", "elevation", "numlayers"]],
+            on=["model", "position"],
+        )
+        .merge(
+            doi[["model", "position", "doiupper", "doilower"]].drop_duplicates(
+                ["model", "position"]
+            ),
+            on=["model", "position"],
+            how="left",
+        )
+        .merge(mset, left_on="model", right_index=True, how="left")
+    )
 
-    df = df.rename(columns={"xutm": "x", "yutm": "y", "layer": "layer_no",
-                            "model": "gerda_model", "position": "gerda_position",
-                            "doiupper": "doi_upper"})
+    df = df.rename(
+        columns={
+            "xutm": "x",
+            "yutm": "y",
+            "layer": "layer_no",
+            "model": "gerda_model",
+            "position": "gerda_position",
+            "doiupper": "doi_upper",
+        }
+    )
     df["doi"] = df[doi_column if doi_column in df else "doilower"]
-    df["model_id"] = df.gerda_model.astype("int64").astype(str) + "_" + \
-        df.gerda_position.astype("int64").astype(str)
-    cols = ["model_id", "x", "y", "elevation", "layer_no", "depth_top", "depth_bot", "rho",
-            "doi", "doi_upper", "year", "datatype", "subtype", "inversion", "numlayers",
-            "gerda_model", "gerda_position"]
-    return df[cols].sort_values(["gerda_model", "gerda_position", "layer_no"]).reset_index(drop=True)
+    df["model_id"] = (
+        df.gerda_model.astype("int64").astype(str)
+        + "_"
+        + df.gerda_position.astype("int64").astype(str)
+    )
+    cols = [
+        "model_id",
+        "x",
+        "y",
+        "elevation",
+        "layer_no",
+        "depth_top",
+        "depth_bot",
+        "rho",
+        "doi",
+        "doi_upper",
+        "year",
+        "datatype",
+        "subtype",
+        "inversion",
+        "numlayers",
+        "gerda_model",
+        "gerda_position",
+    ]
+    return (
+        df[cols]
+        .sort_values(["gerda_model", "gerda_position", "layer_no"])
+        .reset_index(drop=True)
+    )
 
 
 def read_gerda(path, bbox=None, datatypes=None, doi_column="doilower"):
@@ -492,7 +650,7 @@ def read_gerda(path, bbox=None, datatypes=None, doi_column="doilower"):
     return _assemble(t, doi_column)
 
 
-read_gerda_mdb = read_gerda          # backwards compatible name
+read_gerda_mdb = read_gerda  # backwards compatible name
 
 
 if __name__ == "__main__":
@@ -501,7 +659,9 @@ if __name__ == "__main__":
     ap.add_argument("out", nargs="?")
     ap.add_argument("--bbox", help="xmin,ymin,xmax,ymax (EPSG:25832)")
     ap.add_argument("--datatype", help="e.g. skytem or tem,paces")
-    ap.add_argument("--schema", action="store_true", help="print tables and columns, then stop")
+    ap.add_argument(
+        "--schema", action="store_true", help="print tables and columns, then stop"
+    )
     a = ap.parse_args()
     if a.schema:
         print_schema(a.db)
@@ -512,8 +672,13 @@ if __name__ == "__main__":
     dts = [d.strip() for d in a.datatype.split(",")] if a.datatype else None
     df = read_gerda(src, bbox, dts)
     df.to_csv(out, index=False)
-    print(f"{src.name}: {df.model_id.nunique()} model positions, {len(df)} layer rows, "
-          f"datatype={df.datatype.dropna().unique().tolist()}, "
-          f"years={sorted(df.year.dropna().unique().astype(int).tolist())}")
-    print(f"x {df.x.min():.0f}-{df.x.max():.0f}, y {df.y.min():.0f}-{df.y.max():.0f} (EPSG:25832)")
+    print(
+        f"{src.name}: {df.model_id.nunique()} model positions, {len(df)} layer rows, "
+        f"datatype={df.datatype.dropna().unique().tolist()}, "
+        f"years={sorted(df.year.dropna().unique().astype(int).tolist())}"
+    )
+    print(
+        f"x {df.x.min():.0f}-{df.x.max():.0f}, y {df.y.min():.0f}-{df.y.max():.0f} "
+        "(EPSG:25832)"
+    )
     print(f"wrote {out}")
