@@ -68,7 +68,8 @@ from .base import NODATA_VARIANCE, require_ascending
 from .combine import GeoSigmaWarning
 
 #: Default complexity-class -> range table (class 0..4), shared with the
-#: geophysical themes. Index by the complexity class *at the well*.
+#: geophysical themes. Index by the complexity class *at the well*; a higher
+#: class is more complex (shorter range).
 _COMP2RANGE = (100.0, 500.0, 400.0, 250.0, 100.0)
 
 
@@ -92,7 +93,9 @@ class WellSet:
         rating before filling this in; see the module docstring.
     comp_class : ndarray of int
         Complexity class (0..4) sampled at the well; indexes the range table.
-        NaN is treated as class 0 (matching MATLAB ``isnan -> 0``).
+        Internal order: a higher class is more complex (see
+        :func:`geosigma.themes.data_io.read_complexity_grid`). NaN is treated as
+        class 0 (matching MATLAB ``isnan -> 0``).
     gradients, Ks : sequence of float, one entry per quality class
         Per-quality ``var0`` tables, ordered from the best quality (index 0)
         to the worst. They should therefore increase from first to last entry.
@@ -258,7 +261,8 @@ def build_well_theme(
     search_radius : int, default 6
         Window half-width in cells.
     comp2range : sequence of float, default (100, 500, 400, 250, 100)
-        Complexity-class -> range table, indexed by the well's complexity class.
+        Complexity-class -> range table, indexed by the well's complexity class
+        (index ``k`` = class ``k``; higher = more complex).
     n_nearest : int, default 3
         Maximum number of nearest wells summed per cell.
 

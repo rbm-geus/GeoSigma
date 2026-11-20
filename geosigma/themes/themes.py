@@ -31,7 +31,10 @@ from .base import RangeGroup, ThemeSpec
 
 # Complexity-class -> range tables shared by most themes. Index 0 is the
 # "unknown" slot (never used: complexity 0 is masked to NaN range); indices
-# 1..4 are complexity classes low..high.
+# 1..4 are complexity classes in GeoSigma's internal order, low..high (a higher
+# class is more complex, so it gets a shorter range). The Danish complexity map
+# (Sandersen 2021) is stored in this order: its file value is 5 - the report's
+# C-index.
 _COMP2RANGE = [100, 500, 400, 250, 100]
 _COMP2RANGE_PREQ = [500, 500, 500, 500, 500]
 

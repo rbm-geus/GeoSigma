@@ -139,7 +139,19 @@ are complexity classes low→high). A single group with `layers="all"` means one
 regime for every layer; two groups split the layer axis into a shallow and a deep
 regime. Complexity classes come from an optional class grid (see the complexity
 contract in [`theme_format.md`](theme_format.md)); with no grid the engine assumes
-uniform class 1.
+uniform class 1 (the least complex).
+
+**Class order.** Inside GeoSigma a higher class is always more complex, and the
+table is indexed that way. Your map may be coded the other way round, so whenever
+you supply one from disk you must say which way it runs; there is no default. In
+a manifest, write `complexity: {path: map.tif, order: higher_is_more_complex}`,
+or `order: lower_is_more_complex` together with `n_classes: 4` (the number of
+classes), and the values are reversed on loading. In a script, read the map with
+`geosigma.themes.read_complexity_grid(path, order=..., n_classes=...)`; an array
+you pass in directly (`complexity: external`, or `ThemeData(complexity=...)`) must
+already be in the internal order. Check the legend of your source before you fill
+this in: the Danish map's report numbers its classes from 1 = high to 4 = low,
+but the file stores 5 minus that number, so the file is `higher_is_more_complex`.
 
 **Reasoning for your setting.** Two decisions live here. First, **does correlation
 length depend on geological complexity in your area, and how?** Where structure is
@@ -153,8 +165,8 @@ into two `RangeGroup`s. The split index itself is a property of your model, not 
 the theme.
 
 **Danish illustration [methods citation].** Most themes use ranges of 500 / 400 / 250 /
-100 m for complexity classes 1–4, with a pre-Quaternary override of 500 m for the
-deep layers. Towed TEM instead uses a flat 100 m for every class and depth.
+100 m for complexity classes 1–4 (least to most complex), with a pre-Quaternary
+override of 500 m for the deep layers. Towed TEM instead uses a flat 100 m for every class and depth.
 
 ## Choice 4 — The certainty decay kernel
 
@@ -644,8 +656,8 @@ model and are not defaults:
 
 (The MATLAB source writes the gradients as `0.5 * [0.02 0.03 0.07 0.1]` and
 `0.5 * [0.025 0.035 0.075 0.105]`.) The range table by complexity class is
-`(100, 500, 400, 250, 100)` m for class 0 (unknown) to 4, the default
-`comp2range` of `build_well_theme`.
+`(100, 500, 400, 250, 100)` m for class 0 (unknown) to 4 (most complex), the
+default `comp2range` of `build_well_theme`.
 
 > **Check the direction of your source's rating before you use it.** The
 > builder only indexes the tables; it cannot tell a reversed scale from a

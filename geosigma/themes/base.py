@@ -144,12 +144,16 @@ class ThemeData:
         :class:`ThemeSpec`.
     complexity : ndarray of shape (ny, nx), optional
         Geological-complexity class grid (integer classes; ``0`` = unknown ->
-        masked, ``1..4`` = complexity classes low..high). Indexed ``[iy, ix]``.
-        The complexity map is a **Danish-specific** input (four classes, applied
-        to the Quaternary). It is **optional**: when ``None`` (the default) the
-        engine assumes a uniform complexity class ``1`` everywhere — i.e. a flat
-        correlation range with no complexity dependence (the first non-unknown
-        entry of each group's ``range_by_complexity``).
+        masked, ``1..n`` = complexity classes). Indexed ``[iy, ix]``. It must
+        be in GeoSigma's internal order: a **higher class is more complex**
+        (``1`` = least complex). A map coded the other way round is reversed
+        when it is read (:func:`geosigma.themes.data_io.read_complexity_grid`,
+        or ``order`` in a ThemeData manifest). The complexity map is a
+        **Danish-specific** input (four classes, applied to the Quaternary). It
+        is **optional**: when ``None`` (the default) the engine assumes a
+        uniform complexity class ``1`` (the least complex) everywhere — i.e. a
+        flat correlation range with no complexity dependence (the first
+        non-unknown entry of each group's ``range_by_complexity``).
     """
 
     xs: np.ndarray
@@ -193,9 +197,12 @@ class RangeGroup:
         Which modelled layers this group covers (see :data:`LayerSelector`).
     range_by_complexity : sequence of float
         Correlation range per complexity class. Index ``0`` is the *unknown*
-        class (never used — class-0 cells are masked); indices ``1..4`` are the
-        complexity classes. A length-5 list ``[unused, c1, c2, c3, c4]`` matches
-        the Danish convention, but any length >= 2 is accepted.
+        class (never used — class-0 cells are masked); index ``k >= 1`` is the
+        range for class ``k`` in the internal order, where a higher class is
+        more complex (index ``1`` = least complex). A length-5 list
+        ``[unused, c1, c2, c3, c4]`` matches the Danish convention (e.g.
+        ``[100, 500, 400, 250, 100]``: 500 m for the least complex class, 100 m
+        for the most complex), but any length >= 2 is accepted.
     """
 
     layers: LayerSelector
@@ -555,8 +562,9 @@ def build_theme(
 
     complexity = data.complexity
     if complexity is None:
-        # No complexity map supplied -> uniform class 1 (flat range, no
-        # complexity dependence). The complexity map is a Danish-specific input.
+        # No complexity map supplied -> uniform class 1, the least complex class
+        # (flat range, no complexity dependence). The complexity map is a
+        # Danish-specific input.
         complexity = np.ones((grid_y.size, grid_x.size))
 
     rangemap = _range_map(complexity, spec.range_model, n_layers)

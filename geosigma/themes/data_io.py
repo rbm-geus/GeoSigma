@@ -43,7 +43,7 @@ Manifest schema (mapping ``ThemeData`` + spec resolution)::
       doi:                      # per-point scalar: a single column
         per_layer: false
         column: doi
-    complexity: external        # 'external' | 'none' | a grid path (see below)
+    complexity: external        # 'external' | 'none' | {path, order} (see below)
     spec_params:                # data-derived scalars the spec factory needs
       active_layers: [12, 13, ...]
 
@@ -54,16 +54,36 @@ grid is a *separate* input and its absence is a real modelling choice, so the
 manifest must state it **explicitly** — a missing / ``null`` field is an error,
 not a silent fall-back to uniform complexity. The three valid declarations are:
 
-* ``complexity: <path>`` (or ``{path: <path>}``) — load the grid from disk. When
-  a ``grid_meta`` is supplied to the loader the grid is required to be aligned
+* ``complexity: {path: <path>, order: <order>}`` — load the grid from disk.
+  ``order`` is required and has no default; see *Class order* below. When a
+  ``grid_meta`` is supplied to the loader the grid is required to be aligned
   with it (via :func:`utils.grids_aligned`); a misaligned grid raises.
 * ``complexity: external`` — the grid is supplied at load time by the caller
   through the ``complexity=`` argument (e.g. a crop sampled onto the working
   grid). Omitting it raises rather than silently defaulting.
 * ``complexity: none`` (or ``uniform``) — the explicit opt-in to *no* complexity
   map: :class:`ThemeData.complexity` stays ``None`` and the engine assumes a flat
-  range (uniform class 1). This is the only way to get the old implicit default,
-  and it is now a deliberate, recorded choice.
+  range (uniform class 1, the least complex class). This is the only way to get
+  the old implicit default, and it is now a deliberate, recorded choice.
+
+Class order (explicit — no default)
+-----------------------------------
+Inside GeoSigma a higher complexity class means a more complex geology: class
+``0`` is unknown (masked) and ``1 .. n`` run from least to most complex. Every
+``range_by_complexity`` table is indexed in that order. Complexity maps are not
+all coded that way, so a map read from disk must say which way its values run:
+
+* ``order: higher_is_more_complex`` — the values are used as they are.
+* ``order: lower_is_more_complex`` — the values are reversed on loading,
+  ``c -> n_classes + 1 - c`` for ``c`` in ``1 .. n_classes`` (``0`` stays ``0``).
+  This needs ``n_classes`` as well, e.g.
+  ``{path: map.tif, order: lower_is_more_complex, n_classes: 4}``: the map's own
+  maximum is not used, because a crop need not contain the top class.
+
+A grid supplied as an array (``complexity: external``, or
+:class:`~geosigma.themes.base.ThemeData` built directly) is taken to be in the
+internal order already; read it with :func:`read_complexity_grid` to apply a
+declared order.
 
 Spec resolution
 ---------------
@@ -111,6 +131,11 @@ _REQUIRED_KEYS = (
 
 #: Explicit "no complexity grid" declarations (engine falls back to uniform).
 _COMPLEXITY_NONE = ("none", "uniform")
+
+#: Valid values of a complexity map's ``order``: which way its classes run. The
+#: internal convention is ``higher_is_more_complex``; a map declared
+#: ``lower_is_more_complex`` is reversed when it is read.
+COMPLEXITY_ORDERS = ("higher_is_more_complex", "lower_is_more_complex")
 
 #: Format revisions this loader understands. A manifest with no ``format_version``
 #: is treated as :data:`_DEFAULT_FORMAT_VERSION` (the ten Danish local manifests
@@ -277,6 +302,80 @@ def _load_grid(path):
     )
 
 
+def orient_complexity(grid, order, n_classes=None):
+    """Return a complexity class grid in the internal order (higher = more complex).
+
+    Parameters
+    ----------
+    grid : array_like
+        Complexity classes: ``0`` = unknown, ``1 .. n`` = classes.
+    order : str
+        One of :data:`COMPLEXITY_ORDERS`; how the values in ``grid`` run.
+    n_classes : int, optional
+        Number of classes. Required for ``"lower_is_more_complex"``, where class
+        ``c`` becomes ``n_classes + 1 - c``; ignored otherwise.
+
+    With ``"higher_is_more_complex"`` the grid is returned as a float array with
+    its values unchanged.
+    """
+    if order not in COMPLEXITY_ORDERS:
+        raise ValueError(
+            f"complexity order {order!r} is not one of {list(COMPLEXITY_ORDERS)}"
+        )
+    grid = np.asarray(grid, dtype=float)
+    if order == "higher_is_more_complex":
+        return grid
+    if n_classes is None:
+        raise ValueError(
+            "complexity order 'lower_is_more_complex' needs n_classes (the "
+            "number of complexity classes) to reverse the classes"
+        )
+    if isinstance(n_classes, bool) or int(n_classes) != n_classes or n_classes < 1:
+        raise ValueError(f"n_classes must be a positive integer, got {n_classes!r}")
+    n = int(n_classes)
+    valid = np.isin(grid, np.arange(n + 1))
+    if not valid.all():
+        bad = np.unique(grid[~valid])[:5].tolist()
+        raise ValueError(
+            f"complexity grid has values outside 0..{n} (e.g. {bad}); cannot "
+            f"reverse it with n_classes={n}"
+        )
+    return np.where(grid > 0, n + 1 - grid, 0.0)
+
+
+def read_complexity_grid(path, *, order, n_classes=None, grid_meta=None):
+    """Read a complexity class grid from disk in the internal order.
+
+    Parameters
+    ----------
+    path : str or path-like
+        Surfer 7 (``.grd``), GeoTIFF (``.tif``/``.tiff``) or ESRI ASCII
+        (``.asc``/``.txt``) raster.
+    order : str
+        Required, no default: one of :data:`COMPLEXITY_ORDERS`.
+    n_classes : int, optional
+        Required with ``order="lower_is_more_complex"``.
+    grid_meta : dict, optional
+        If given, the grid must be aligned with it (:func:`utils.grids_aligned`).
+
+    Returns
+    -------
+    (grid, meta)
+        ``grid`` as stored (north-up, row 0 = top) as a float array in which
+        higher means more complex; ``meta`` is the raster's grid metadata.
+    """
+    grid, gmeta = _load_grid(path)
+    if grid_meta is not None:
+        from utils import grids_aligned
+
+        if not grids_aligned(gmeta, grid_meta):
+            raise ValueError(
+                f"complexity grid {str(path)!r} is not aligned with the supplied "
+                f"grid_meta (shape/spacing/origin differ)."
+            )
+    return orient_complexity(grid, order, n_classes), gmeta
+
+
 def _resolve_complexity(man, manifest_path, complexity, grid_meta):
     """Apply the explicit complexity contract; return the array (or ``None``)."""
     decl = man.get("complexity")
@@ -284,8 +383,9 @@ def _resolve_complexity(man, manifest_path, complexity, grid_meta):
     if decl is None:
         raise ValueError(
             f"{manifest_path}: complexity is unset (missing or null). Declare it "
-            f"explicitly as a grid path, 'external' (supplied via the complexity= "
-            f"argument), or 'none' (uniform range — the deliberate no-grid choice)."
+            f"explicitly as a grid path ({{path: <grid>, order: <order>}}), "
+            f"'external' (supplied via the complexity= argument), or 'none' "
+            f"(uniform range — the deliberate no-grid choice)."
         )
 
     # Explicit "no grid" -> uniform range (ThemeData.complexity stays None).
@@ -297,7 +397,7 @@ def _resolve_complexity(man, manifest_path, complexity, grid_meta):
             )
         return None
 
-    # Supplied at load time by the caller.
+    # Supplied at load time by the caller (already in the internal order).
     if isinstance(decl, str) and decl.strip().lower() == "external":
         if complexity is None:
             raise ValueError(
@@ -306,15 +406,36 @@ def _resolve_complexity(man, manifest_path, complexity, grid_meta):
             )
         return np.asarray(complexity, dtype=float)
 
-    # Otherwise a concrete grid path (bare string or {path: ...}).
-    if isinstance(decl, Mapping):
-        path = decl.get("path")
-    else:
-        path = decl
-    if not isinstance(path, str):
+    # Otherwise a concrete grid path, which must declare its class order.
+    if isinstance(decl, str):
         raise ValueError(
-            f"{manifest_path}: cannot interpret complexity={decl!r}; expected a "
-            f"path string, {{path: ...}}, 'external', or 'none'."
+            f"{manifest_path}: complexity grid {decl!r} needs its class order. "
+            f"Write it as complexity: {{path: {decl}, order: <order>}} with order "
+            f"one of {list(COMPLEXITY_ORDERS)} (lower_is_more_complex also needs "
+            f"n_classes)."
+        )
+    if not isinstance(decl, Mapping) or not isinstance(decl.get("path"), str):
+        raise ValueError(
+            f"{manifest_path}: cannot interpret complexity={decl!r}; expected "
+            f"{{path: ..., order: ...}}, 'external', or 'none'."
+        )
+    unknown = set(decl) - {"path", "order", "n_classes"}
+    if unknown:
+        raise ValueError(
+            f"{manifest_path}: unknown complexity key(s) {sorted(unknown)}; "
+            f"expected path, order and (with lower_is_more_complex) n_classes."
+        )
+    path, order = decl["path"], decl.get("order")
+    if order is None:
+        raise ValueError(
+            f"{manifest_path}: complexity grid {path!r} has no order. Add order: "
+            f"one of {list(COMPLEXITY_ORDERS)} (lower_is_more_complex also needs "
+            f"n_classes); there is no default."
+        )
+    if order not in COMPLEXITY_ORDERS:
+        raise ValueError(
+            f"{manifest_path}: complexity order {order!r} is not one of "
+            f"{list(COMPLEXITY_ORDERS)}."
         )
     if complexity is not None:
         raise ValueError(
@@ -323,16 +444,13 @@ def _resolve_complexity(man, manifest_path, complexity, grid_meta):
         )
     if not os.path.isabs(path):
         path = os.path.join(os.path.dirname(os.path.abspath(manifest_path)), path)
-    grid, gmeta = _load_grid(path)
-    if grid_meta is not None:
-        from utils import grids_aligned
-
-        if not grids_aligned(gmeta, grid_meta):
-            raise ValueError(
-                f"{manifest_path}: complexity grid {path!r} is not aligned with the "
-                f"supplied grid_meta (shape/spacing/origin differ)."
-            )
-    return np.asarray(grid, dtype=float)
+    try:
+        grid, _ = read_complexity_grid(
+            path, order=order, n_classes=decl.get("n_classes"), grid_meta=grid_meta
+        )
+    except ValueError as exc:
+        raise ValueError(f"{manifest_path}: {exc}") from exc
+    return grid
 
 
 def load_theme_data(
@@ -350,8 +468,10 @@ def load_theme_data(
         complexity grid path) are resolved relative to the manifest's directory.
     complexity : ndarray, optional
         The complexity class grid, required iff the manifest declares
-        ``complexity: external``. An error is raised if it is supplied when the
-        manifest instead names a grid path or ``none``.
+        ``complexity: external``. It must already be in the internal order
+        (higher = more complex; see :func:`read_complexity_grid`). An error is
+        raised if it is supplied when the manifest instead names a grid path or
+        ``none``.
     grid_meta : mapping, optional
         Grid metadata of the working grid. When the manifest references a
         complexity *path*, the loaded grid is checked against this via
