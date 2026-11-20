@@ -45,8 +45,8 @@ variance stack.
 ## Run it
 
 The example lives in `examples/bjerringbro/` of the GeoSigma repository. It
-reads the model surfaces from `../data/Jutland_hydrostrat_model` and the
-complexity map from `../matlab_reference/N-ret-mod---Source-main/Kompleksitetskort.grd`.
+reads the model surfaces from `../data/Jutland_hydrostrat_model`; everything
+else is in this folder. It runs from any working directory.
 
 ```bash
 cd GeoSigma
@@ -70,7 +70,8 @@ All settings are in the `CONFIG` block at the top of `geosigma_dk_workflow.py`.
 examples/bjerringbro/
 ├── region_config.json        layer list and location of the model surfaces
 ├── data/
-│   └── FohmLayers.csv        model layer -> FOHM layer number and name
+│   ├── FohmLayers.csv        model layer -> FOHM layer number and name
+│   └── complexity_bjerringbro.tif   excerpt of the geological complexity map
 ├── geosigma_dk_workflow.py   main script: themes -> variance maps
 ├── geofysik/                 ThemeData bundles (points CSV + manifest) per method
 │   ├── skytem/               SkyTEM            -> spec skytem
@@ -82,7 +83,8 @@ examples/bjerringbro/
 ├── data_prep/
 │   ├── gerda_db.py               reads GERDA exports (Access .mdb or Firebird .fdb)
 │   ├── gerda_to_themedata.py     GERDA models -> ThemeData bundle
-│   └── wells_to_csv.py           Jupiter (+ interpretation points) -> wells.csv
+│   ├── wells_to_csv.py           Jupiter (+ interpretation points) -> wells.csv
+│   └── crop_complexity.py        national complexity map -> data/ excerpt
 
 ```
 
@@ -108,6 +110,12 @@ The well input was made from the Jupiter extract:
 python data_prep/wells_to_csv.py --region-config region_config.json --jupiter boringer/jupiter.csv --out boringer/wells.csv
 ```
 
+The complexity-map excerpt was cut from the national map:
+
+```bash
+python data_prep/crop_complexity.py --source ../../matlab_reference/N-ret-mod---Source-main/Kompleksitetskort.grd     --region-config region_config.json --out data/complexity_bjerringbro.tif
+```
+
 Each manifest's `_notes` records the source file and how many soundings were kept.
 
 ## Limitations
@@ -116,9 +124,10 @@ Each manifest's `_notes` records the source file and how many soundings were kep
   `wells_to_csv.py` assigned 2–4 from the drilling year. No interpretation points
   ("snapped" wells) are included, and no `--model-year` filter was applied, so
   wells drilled after the model was made are counted too.
-- **The complexity map is a provisional proxy.** It comes from the national
-  MATLAB reference data. See the notes in `docs/theme_format.md` on its origin
-  and limitations.
+- **The complexity map is a provisional proxy.** `data/complexity_bjerringbro.tif`
+  is an excerpt of the national map (the model grid plus 1 km), cut with
+  `data_prep/crop_complexity.py`; see "Geological complexity map" below and
+  `docs/theme_format.md`.
 - **The model-quality class is uniform** (class 2 everywhere), because no
   model-class grid was supplied.
 - **Coverage is sparse.** Each geophysical method informs at most about 5 % of

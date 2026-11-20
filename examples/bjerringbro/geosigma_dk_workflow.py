@@ -89,7 +89,7 @@ CONFIG = {
     # aligned with the model grid. Sets the correlation range (500/400/250/100 m in
     # the Danish specs). GEUS may share their national complexity proxy; otherwise
     # set to None => uniform class 1 (a single, long range everywhere).
-    "complexity_grid": "../../matlab_reference/N-ret-mod---Source-main/Kompleksitetskort.grd",
+    "complexity_grid": "data/complexity_bjerringbro.tif",  # excerpt, see data_prep/crop_complexity.py
     # The grid does NOT need to match the model grid: origin shifts (e.g. half a cell),
     # larger extent or other cell size are handled by class_grid_to_model().
     # Class for model cells the complexity map does not cover. 0 = unknown, which
