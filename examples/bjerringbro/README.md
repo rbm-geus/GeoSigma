@@ -2,8 +2,11 @@
 
 Uncertainty of a hydrostratigraphic layer model at Bjerringbro, built with
 GeoSigma from real Danish data: GERDA geophysics (SkyTEM, ground TEM, PACES) and
-Jupiter boreholes. The example produces per-layer **variance maps** and a small
-ensemble of layer-model **realizations**.
+Jupiter boreholes. The example produces per-layer **variance maps**, the
+GeoSigma v0.1.0 output.
+
+Realizations drawn from these variance maps are a v1.0.0 preview: see
+[`../preview/bjerringbro_realizations.py`](../preview/bjerringbro_realizations.py).
 
 | | |
 |---|---|
@@ -30,8 +33,7 @@ This takes about 15 seconds and writes:
 |---|---|
 | `output/variance_maps/variance_NN.tif` | Variance [m²] of boundary NN, the input for kriging/simulation |
 | `output/variance_maps/std_NN.tif` | Standard deviation [m] for viewing in QGIS |
-| `output/variance_maps/qa_overview.png` | Data coverage per source, final std and realizations |
-| `output/realizations/real_NNN/` | 10 realizations, one GeoTIFF per boundary |
+| `output/variance_maps/qa_overview.png` | Data coverage per source and final std |
 
 All settings are in the `CONFIG` block at the top of `geosigma_dk_workflow.py`.
 
@@ -40,7 +42,7 @@ All settings are in the `CONFIG` block at the top of `geosigma_dk_workflow.py`.
 ```
 examples/bjerringbro/
 ├── region_config.json        layer list and location of the model surfaces
-├── geosigma_dk_workflow.py   main script: themes -> variance maps -> realizations
+├── geosigma_dk_workflow.py   main script: themes -> variance maps
 ├── geofysik/                 ThemeData bundles (points CSV + manifest) per method
 │   ├── skytem/               SkyTEM            -> spec skytem
 │   ├── fewtem/               ground TEM        -> spec fewtem
@@ -81,12 +83,6 @@ Each manifest's `_notes` records the source file and how many soundings were kep
 
 ## Limitations
 
-- **Realizations are a simplified stand-in.** GeoSigma v0.1.0 only provides the
-  variance maps. The realizations here are the deterministic surfaces plus
-  correlated noise scaled by the variance map, with the layers kept in order.
-  This is not GEUS's planned v1.0.0 method (local kriging and conditional
-  simulation), and it has not been validated. The correlation range (500 m) is
-  a choice, not estimated from data.
 - **Borehole quality is a placeholder.** `jupiter.csv` has no quality class, so
   `wells_to_csv.py` assigned 2–4 from the drilling year. No interpretation points
   ("snapped" wells) are included, and no `--model-year` filter was applied, so

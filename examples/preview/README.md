@@ -35,6 +35,7 @@ follows. All deviations are listed in [`../../docs/deviations_from_matlab.md`](.
 | `demo_inpox_point_drawing.py` | The INPOX transfer function and how its parameters change which points are drawn | |
 | `demo_inpox_basic_jutland_hydrostrat.py` | INPOX selection of conditioning points on the sample model | |
 | `demo_geosigma_pipeline.py` | Surface → INPOX points → covariance model, using the core primitives directly. Stops once the prior covariance is assembled; see `demo_kriging_pipeline_end_to_end.py` for the full workflow. | |
+| `bjerringbro_realizations.py` | Realizations for the Bjerringbro example ([`../bjerringbro/`](../bjerringbro/)): its variance maps plus correlated noise from `precal_cov` and `get_reals_cholesky`, with the layers kept in order. A simplified stand-in, not the GEUS method, and not validated. Writes to `examples/output/bjerringbro_realizations/`. | |
 | `demo_synthetic_kriging_inversion.py` | The kriging, least-squares and Cholesky primitives on a small synthetic grid | |
 
 The `nn` extra is `pip install -e ".[nn]"` (torch and scipy). On Windows

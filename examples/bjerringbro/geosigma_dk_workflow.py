@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-GeoSigma workflow for a Danish site: variance maps + (experimental) realizations
-================================================================================
+GeoSigma workflow for a Danish site: variance maps
+==================================================
 
 Built on GeoSigma v0.1.0 (https://github.com/rbm-geus/GeoSigma).
 
@@ -10,7 +10,6 @@ Built on GeoSigma v0.1.0 (https://github.com/rbm-geus/GeoSigma).
     STEP 3  Build one variance "theme" per geophysical data source (SkyTEM, tTEM, PACES ...)
     STEP 4  Build the borehole (well) theme from your layer picks
     STEP 5  Add the model theme, combine all themes, apply the depth floor, export GeoTIFFs
-    STEP 6  [EXPERIMENTAL] Draw realizations of every layer boundary from the variance maps
 
 Every place you must supply your own data is marked with:   >>> YOUR DATA
 
@@ -22,19 +21,12 @@ How to run
 
 Install GeoSigma first (inside its repo):  pip install -e .
 
-IMPORTANT about STEP 6
-----------------------
-GeoSigma v0.1.0 only ships the variance-map half. Its realization method (local
-kriging conditioned on INPOX-selected points, then Cholesky simulation) is planned
-for v1.0.0 and is NOT finished. STEP 6 is a simplified stand-in built from the
-primitives GeoSigma already ships (``precal_cov`` + ``get_reals_cholesky``):
-
-    realization = deterministic surface + spatially correlated Gaussian noise
-                  scaled cell-by-cell by sqrt(variance map)
-
-followed by stratigraphic ordering and preservation of zero-thickness layers.
-It is useful for exploring the uncertainty, but it is not the GEUS method and has
-not been validated. Replace it with the official driver once v1.0.0 is released.
+Realizations
+------------
+GeoSigma v0.1.0 ships the variance-map half only. An experimental stand-in for
+realizations built on these variance maps is in
+``examples/preview/bjerringbro_realizations.py`` (v1.0.0 preview; not the GEUS
+method and not validated).
 """
 
 from __future__ import annotations
@@ -47,8 +39,6 @@ import numpy as np
 import pandas as pd
 
 from geosigma.config import RegionConfig
-from geosigma.core.get_reals_cholesky import get_reals_cholesky
-from geosigma.core.precal_cov import precal_cov
 from geosigma.themes import (
     NODATA_VARIANCE,
     WellSet,
@@ -147,15 +137,6 @@ CONFIG = {
     # --- STEP 5: output -----------------------------------------------------------
     "out_dir": "output/variance_maps",
 
-    # --- STEP 6: experimental realizations -------------------------------------
-    "realizations": {
-        "enabled": True,
-        "n_reals": 10,
-        "corr_range_m": 500.0,   # lateral correlation range of the error (m)
-        "max_sim_cells": 2500,   # Cholesky is O(n^3): simulate on a coarse grid then upsample
-        "seed": 42,
-        "out_dir": "output/realizations",
-    },
 }
 
 
@@ -402,93 +383,8 @@ def combine_and_export(themes, model_class, terrain, bottom_stack, meta, out_dir
     return final, themes
 
 
-# =============================================================================
-# STEP 6 — EXPERIMENTAL realizations (not the GeoSigma v1.0.0 method)
-# =============================================================================
-def _bilinear_upsample(coarse, cx, cy, fx, fy):
-    """Bilinear interpolation of coarse (ny, nx, n) onto fine axes fx, fy."""
-    def weights(c, f):
-        i = np.clip(np.searchsorted(c, f) - 1, 0, c.size - 2)
-        w = np.clip((f - c[i]) / (c[i + 1] - c[i]), 0.0, 1.0)
-        return i, w
-    ix, wx = weights(cx, fx)
-    iy, wy = weights(cy, fy)
-    a = coarse[iy][:, ix]
-    b = coarse[iy][:, ix + 1]
-    c = coarse[iy + 1][:, ix]
-    d = coarse[iy + 1][:, ix + 1]
-    wx = wx[None, :, None]
-    wy = wy[:, None, None]
-    return (a * (1 - wx) + b * wx) * (1 - wy) + (c * (1 - wx) + d * wx) * wy
-
-
-def simulate_realizations(final_var, terrain, bottom_stack, grid_x, grid_y, rconf):
-    rng_seed = rconf["seed"]
-    np.random.seed(rng_seed)          # get_reals_cholesky uses np.random
-    ny, nx, n_layers = final_var.shape
-
-    # Coarse simulation grid so the Cholesky stays tractable.
-    step = max(1, int(np.ceil(np.sqrt(nx * ny / rconf["max_sim_cells"]))))
-    cx = np.append(grid_x[::step], grid_x[-1]) if (nx - 1) % step else grid_x[::step]
-    cy = np.append(grid_y[::step], grid_y[-1]) if (ny - 1) % step else grid_y[::step]
-    cxx, cyy = np.meshgrid(cx, cy)
-    pos = np.column_stack([cxx.ravel(), cyy.ravel()])
-    print(f"[6] Simulating on {cy.size} x {cx.size} coarse grid (step {step} cells), "
-          f"range {rconf['corr_range_m']:.0f} m, {rconf['n_reals']} realizations")
-
-    # Unit-sill Gaussian correlation, factorised once and reused for every layer.
-    corr, _ = precal_cov(pos, pos, f"1 Gau({rconf['corr_range_m']})")
-    # Standard-normal correlated fields: (n_coarse, n_layers * n_reals)
-    z = get_reals_cholesky(corr, Nreals=n_layers * rconf["n_reals"])
-    z = z.reshape(cy.size, cx.size, n_layers, rconf["n_reals"])
-
-    std = np.sqrt(np.where(np.isfinite(final_var), final_var, 0.0))
-    upper0 = np.concatenate([terrain[:, :, None], bottom_stack[:, :, :-1]], axis=-1)
-    zero_thick = (upper0 - bottom_stack) <= 1e-6
-
-    reals = np.empty((rconf["n_reals"], ny, nx, n_layers))
-    for r in range(rconf["n_reals"]):
-        noise = _bilinear_upsample(z[:, :, :, r], cx, cy, grid_x, grid_y)  # (ny, nx, n_layers)
-        surf = bottom_stack + noise * std
-        # Stratigraphic order: no boundary above terrain or above the one above it.
-        # Layers absent in the model (zero thickness) stay absent: tie to the boundary above.
-        prev = terrain.copy()
-        for s in range(n_layers):
-            cur = np.minimum(surf[:, :, s], prev)
-            cur = np.where(zero_thick[:, :, s], prev, cur)
-            surf[:, :, s] = cur
-            prev = cur
-        reals[r] = surf
-    return reals
-
-
-def export_realizations(reals, meta, cfg, out_dir):
-    import rasterio
-    from rasterio.transform import from_origin
-
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    n_reals, ny, nx, n_layers = reals.shape
-    transform = from_origin(meta["xllcorner"], meta["yllcorner"] + ny * meta["dy"],
-                            meta["dx"], meta["dy"])
-    names = cfg.modelled_layer_names
-    for r in range(n_reals):
-        rdir = out_dir / f"real_{r + 1:03d}"
-        rdir.mkdir(exist_ok=True)
-        for s in range(n_layers):
-            data = np.flipud(reals[r, :, :, s])        # back to north-up
-            with rasterio.open(rdir / f"{names[s]}.tif", "w", driver="GTiff", height=ny,
-                               width=nx, count=1, dtype="float32", crs=meta.get("crs"),
-                               transform=transform, nodata=-9999.0) as ds:
-                ds.write(np.where(np.isfinite(data), data, -9999.0).astype("float32"), 1)
-    # Ensemble statistics: easy sanity check against the variance maps.
-    ens_std = np.nanstd(reals, axis=0)
-    np.save(out_dir / "ensemble_std.npy", ens_std)
-    print(f"[6] Wrote {n_reals} realizations x {n_layers} surfaces to {out_dir}/real_NNN/")
-
-
-def qa_figure(themes, final, reals, grid_x, grid_y, out_png, layers=None):
-    """Save a QA figure: per-theme coverage, final std, and realization spread."""
+def qa_figure(themes, final, grid_x, grid_y, out_png, layers=None):
+    """Save a QA figure: per-theme coverage and final std."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -498,7 +394,7 @@ def qa_figure(themes, final, reals, grid_x, grid_y, out_png, layers=None):
     ext = [grid_x[0], grid_x[-1], grid_y[0], grid_y[-1]]
     names = [k for k in themes if k != "model"]
     ncols = len(layers)
-    nrows = len(names) + 1 + (2 if reals is not None else 0)
+    nrows = len(names) + 1
     fig, axs = plt.subplots(nrows, ncols, figsize=(3.6 * ncols, 3.1 * nrows), squeeze=False)
 
     def show(ax, img, title, cmap="viridis", vmin=None, vmax=None, label="std [m]"):
@@ -515,12 +411,6 @@ def qa_figure(themes, final, reals, grid_x, grid_y, out_png, layers=None):
     r = len(names)
     for c, s in enumerate(layers):
         show(axs[r, c], np.sqrt(final[:, :, s]), f"FINAL std, layer {s + 1}", vmin=0)
-    if reals is not None:
-        for c, s in enumerate(layers):
-            show(axs[r + 1, c], reals[0, :, :, s], f"Realization 1, layer {s + 1}",
-                 cmap="terrain", label="elev [m]")
-            show(axs[r + 2, c], np.nanstd(reals[:, :, :, s], axis=0),
-                 f"Ensemble std, layer {s + 1}", vmin=0)
     fig.suptitle("GeoSigma QA — white = no information from that source", fontsize=11)
     fig.tight_layout()
     Path(out_png).parent.mkdir(parents=True, exist_ok=True)
@@ -594,8 +484,6 @@ def build_demo_inputs(repo_root: Path, demo_dir: Path):
         "themes": [{"name": "SkyTEM", "manifest": str(sky / "skytem.manifest.yaml")}],
         "wells_csv": str(demo_dir / "wells.csv"),
         "out_dir": str(demo_dir / "output" / "variance_maps"),
-        "realizations": {**CONFIG["realizations"], "n_reals": 5,
-                         "out_dir": str(demo_dir / "output" / "realizations")},
     }
 
 
@@ -663,16 +551,8 @@ def run(conf):
     final, themes = combine_and_export(themes, model_class, terrain, bottom_stack,
                                        meta, conf["out_dir"])
 
-    reals = None
-    rconf = conf["realizations"]
-    if rconf["enabled"]:
-        reals = simulate_realizations(final, terrain, bottom_stack, grid_x, grid_y, rconf)
-        export_realizations(reals, meta, cfg, rconf["out_dir"])
-        ens = np.nanmedian(np.nanstd(reals, axis=0), axis=(0, 1))
-        print("    ensemble std per layer [m]: " + " ".join(f"{s:.1f}" for s in ens))
-
-    qa_figure(themes, final, reals, grid_x, grid_y, Path(conf["out_dir"]) / "qa_overview.png")
-    return final, reals
+    qa_figure(themes, final, grid_x, grid_y, Path(conf["out_dir"]) / "qa_overview.png")
+    return final
 
 
 if __name__ == "__main__":
