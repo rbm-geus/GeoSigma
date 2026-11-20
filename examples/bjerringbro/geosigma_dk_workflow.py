@@ -101,11 +101,18 @@ CONFIG = {
     "model_class_grid": None,          # e.g. "my_site/model_class.tif"
     "model_class_if_no_grid": 2,
 
-    # Danish two-regime split: 0-based index of the first PRE-QUATERNARY modelled
-    # layer. Built-in Danish specs use a different correlation range below it.
+    # Danish two-regime split: 0-based index, in the variance stack, of the first
+    # boundary that takes the PRE-QUATERNARY correlation range. Built-in Danish
+    # specs use the Quaternary (complexity-graded) range above it.
     # >>> YOUR DATA: look it up in your layer list. If your model is all Quaternary,
-    # set it to the number of modelled layers (= no deep regime).
-    "n_prereq": None,                  # None => n_modelled_layers
+    # set it to the number of modelled layers (= no deep regime); None does the same.
+    # Bjerringbro (data/FohmLayers.csv): model layers 1-10 are Quaternary, 11-15
+    # pre-Quaternary (Billund BDS2, Billund BDS0, Palaeogene clay, Danian
+    # limestone, chalk). The surfaces are layer BOTTOMS and stack index i is the
+    # bottom of model layer i + 1, so the bottom of layer 10 (base of the
+    # Quaternary, index 9) stays Quaternary and the pre-Quaternary regime starts
+    # at the bottom of layer 11 = index 10. Checked in tests/test_bjerringbro_example.py.
+    "n_prereq": 10,
 
     # --- STEP 3: geophysical themes -------------------------------------------
     # One entry per data source. Each "manifest" is a ThemeData bundle

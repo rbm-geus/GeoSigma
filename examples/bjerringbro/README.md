@@ -15,6 +15,33 @@ Realizations drawn from these variance maps are a v1.0.0 preview: see
 | Model | 15 layer boundaries below terrain (`region_config.json`) |
 | Data (Downloaded 2026/10/29) | 495 SkyTEM, 128 ground-TEM and 2 800 PACES soundings; 17 Jupiter wells (163 boundary picks, only wells deeper than 75 meters) |
 
+## Layers
+
+The model has 15 layers from FOHM Jylland (`data/FohmLayers.csv`). Each surface
+is the **bottom** of a layer. Layers 1–10 are Quaternary and 11–15
+pre-Quaternary, so the bottom of layer 10 (the base of the Quaternary) takes
+the Quaternary correlation ranges and the pre-Quaternary ranges start at the
+bottom of layer 11: `n_prereq = 10`, the 0-based index of that boundary in the
+variance stack.
+
+| Model layer | FOHM model layer | FOHM layer number | Name | Regime |
+|---:|---:|---:|---|---|
+| 1 | 1 | 10 | Soil (Jordbund) | Quaternary |
+| 2 | 11 | 1100 | Quaternary clay | Quaternary |
+| 3 | 12 | 1200 | Quaternary sand | Quaternary |
+| 4 | 13 | 1300 | Quaternary clay | Quaternary |
+| 5 | 14 | 1400 | Quaternary sand | Quaternary |
+| 6 | 15 | 1500 | Quaternary clay | Quaternary |
+| 7 | 16 | 2100 | Quaternary sand | Quaternary |
+| 8 | 17 | 2200 | Quaternary clay | Quaternary |
+| 9 | 18 | 2300 | Quaternary sand | Quaternary |
+| 10 | 19 | 2400 | Quaternary clay | Quaternary |
+| 11 | 64 | 7400 | Billund BDS2 | pre-Quaternary |
+| 12 | 68 | 7800 | Billund BDS0 | pre-Quaternary |
+| 13 | 69 | 8000 | Palaeogene clay | pre-Quaternary |
+| 14 | 70 | 8500 | Danian limestone | pre-Quaternary |
+| 15 | 71 | 9000 | Chalk (Skrivekridt) | pre-Quaternary |
+
 ## Run it
 
 The example lives in `examples/bjerringbro/` of the GeoSigma repository. It
@@ -42,6 +69,8 @@ All settings are in the `CONFIG` block at the top of `geosigma_dk_workflow.py`.
 ```
 examples/bjerringbro/
 ├── region_config.json        layer list and location of the model surfaces
+├── data/
+│   └── FohmLayers.csv        model layer -> FOHM layer number and name
 ├── geosigma_dk_workflow.py   main script: themes -> variance maps
 ├── geofysik/                 ThemeData bundles (points CSV + manifest) per method
 │   ├── skytem/               SkyTEM            -> spec skytem

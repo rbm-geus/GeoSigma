@@ -1,0 +1,16 @@
+Modellag, FOHMmodellag, Fohmlagnummer,  Navn
+ 1,  1,  10, Jordbund
+ 2,  11,  1100, Kvartaer ler
+ 3,  12,  1200, Kvartaer sand
+ 4,  13,  1300, Kvartaer ler
+ 5,  14,  1400, Kvartaer sand
+ 6,  15,  1500, Kvartaer ler
+ 7,  16,  2100, Kvartaer sand
+ 8,  17,  2200, Kvartaer ler
+ 9,  18,  2300, Kvartaer sand
+ 10,  19,  2400, Kvartaer ler
+ 11,  64,  7400, Billund BDS2
+ 12,  68,  7800, Billund BDS0
+ 13,  69,  8000, Palaeogen ler
+ 14,  70,  8500, Danien Kalk
+ 15,  71,  9000, Skrivekridt
