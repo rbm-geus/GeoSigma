@@ -110,7 +110,8 @@ def load_model_surfaces(region_config):
     """Terrain + modelled bottoms, south-up, plus cell-centre axes."""
     from geosigma.config import RegionConfig
     from utils import grid_coordinates_from_esri_meta
-    sys.path.insert(0, str(Path(__file__).parent))
+    # The workflow script sits one folder up, in examples/bjerringbro/.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from geosigma_dk_workflow import load_grid
 
     cfg = RegionConfig.from_file(region_config)
