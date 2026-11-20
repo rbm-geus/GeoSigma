@@ -28,6 +28,12 @@ from geosigma.themes import (
 from geosigma.themes.__main__ import main as themes_cli
 from utils import make_grid_meta
 
+# These tests combine without a prior on purpose, to exercise the sentinel
+# cases the export has to handle; the resulting GeoSigmaWarning is expected.
+pytestmark = pytest.mark.filterwarnings(
+    "ignore::geosigma.themes.combine.GeoSigmaWarning"
+)
+
 NY, NX, NL = 6, 5, 2
 
 
@@ -91,7 +97,7 @@ def test_informed_mask_requires_a_theme():
 
 @pytest.mark.parametrize("nodata", [None, -9999.0])
 def test_variance_stack_stores_values_exactly(tmp_path, nodata):
-    combined = combine_variances(_themes())
+    combined = combine_variances(_themes(), prior=None)
     # The both-sentinel rows combine to NODATA_VARIANCE / 2 (to round-off).
     np.testing.assert_allclose(combined[4:], NODATA_VARIANCE / 2, rtol=1e-12)
 
@@ -103,7 +109,7 @@ def test_variance_stack_stores_values_exactly(tmp_path, nodata):
 
 
 def test_display_stack_does_not_touch_variance_files(tmp_path):
-    combined = combine_variances(_themes())
+    combined = combine_variances(_themes(), prior=None)
     meta = _meta()
     paths = write_variance_stack(combined, meta, tmp_path)
     before = [p.read_bytes() for p in paths]
@@ -120,7 +126,7 @@ def test_display_stack_does_not_touch_variance_files(tmp_path):
 
 def test_display_stack_writes_std_and_nodata(tmp_path):
     themes = _themes()
-    combined = combine_variances(themes)
+    combined = combine_variances(themes, prior=None)
     informed = informed_mask(themes)
 
     paths = write_display_stack(combined, _meta(), tmp_path, informed=informed)
@@ -177,14 +183,15 @@ def test_cli_combine_writes_variance_and_std(tmp_path):
     bottom_paths = write_variance_stack(bottoms, meta, surfaces, prefix="bottom")
 
     out = tmp_path / "out"
-    argv = ["combine", "--terrain", str(terrain_path), "--out", str(out)]
+    argv = ["combine", "--no-prior", "--terrain", str(terrain_path)]
+    argv += ["--out", str(out)]
     for d in theme_dirs:
         argv += ["--theme", str(d)]
     for b in bottom_paths:
         argv += ["--bottom", str(b)]
     assert themes_cli(argv) == 0
 
-    combined = combine_variances(themes)
+    combined = combine_variances(themes, prior=None)
     informed = informed_mask(themes)
     for s in range(NL):
         var, _ = _read_raw(out / f"variance_{s + 1:02d}.tif")

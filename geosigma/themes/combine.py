@@ -15,6 +15,9 @@ block), kept **verbatim**:
   contributes a small but **non-zero** precision (``1e-5``), not 0 — this is
   faithful to the MATLAB, which uses the same ``100000`` sentinel (so a cell
   where all ``N`` themes are no-information combines to ``100000 / N``);
+* the model's background variance (the model theme, or a constant per layer)
+  enters as the required ``prior`` argument of :func:`combine_variances`; it is
+  one more term in the precision sum and bounds the combined variance;
 * the result is floored from below by a depth-dependent minimum,
   ``min_map = (0.01 * (terrain - layer_bottom))^2`` (``get_minimum_map.m``);
 * :func:`corr_map` builds the zero-thickness tie grid from wells
@@ -26,12 +29,48 @@ that branch is part of the excluded peatland subsystem and is **not** ported.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
-from .base import NODATA_VARIANCE
+from .base import NODATA_VARIANCE, require_ascending
 
 
-def combine_variances(themes):
+class GeoSigmaWarning(UserWarning):
+    """Warning about a modelling choice that GeoSigma accepts but questions."""
+
+
+def constant_prior(variance_per_layer, shape):
+    """Constant background variance per layer, for use as ``prior``.
+
+    The minimal answer to "how uncertain is the model where no data say
+    anything?": one variance per layer, the same at every cell. A model theme
+    (:func:`~geosigma.themes.model_theme.model_theme`) that varies with depth and
+    model quality is usually the better answer; see choice 13 in
+    ``docs/bring_your_own_data.md``.
+
+    Parameters
+    ----------
+    variance_per_layer : sequence of float, length n_layers
+        Background variance [m²] of each layer boundary. Must be positive and
+        finite.
+    shape : tuple (ny, nx)
+        Grid shape.
+
+    Returns
+    -------
+    ndarray, shape (ny, nx, n_layers)
+    """
+    var = np.asarray(variance_per_layer, dtype=float)
+    if var.ndim != 1 or var.size == 0:
+        raise ValueError("variance_per_layer must be a non-empty 1-D sequence")
+    if not np.all(np.isfinite(var) & (var > 0)):
+        raise ValueError("variance_per_layer must be positive and finite")
+    ny, nx = shape
+    return np.broadcast_to(var, (int(ny), int(nx), var.size)).copy()
+
+
+def combine_variances(themes, *, prior):
     """Combine theme variance grids as parallel precisions.
 
     Parameters
@@ -43,18 +82,52 @@ def combine_variances(themes):
         sentinel for no-information cells, which contributes a small non-zero
         precision (``1e-5``); both are accepted and combined verbatim, matching
         the MATLAB (which uses the ``100000`` sentinel throughout).
+    prior : ndarray of shape (ny, nx, n_layers), or None
+        **Required, keyword-only.** The background variance of the model: how
+        uncertain each layer boundary is where no data say anything. Usually a
+        model theme (:func:`~geosigma.themes.model_theme.model_theme`), at least
+        :func:`constant_prior`. It enters the combine as one more theme,
+        appended **last** in the precision sum, so ``prior=X`` gives exactly the
+        same result as passing ``X`` as the last element of ``themes``. Because
+        it is part of the sum, the combined variance can never exceed it.
+
+        Pass ``prior=None`` to combine the themes alone. This is a deliberate
+        choice (for example when the model theme is already in ``themes``, as
+        in a MATLAB-parity run that must keep the MATLAB theme order). A
+        :class:`GeoSigmaWarning` is then issued if any cell is informed by no
+        theme, or the combined variance reaches ``NODATA_VARIANCE``: those cells
+        hold a sentinel-derived value (``100000 / N`` and similar), not a
+        meaningful variance.
 
     Returns
     -------
     ndarray, shape (ny, nx, n_layers)
-        ``1 / sum(1 / theme)`` over the themes — the combined variance.
+        ``1 / sum(1 / theme)`` over the themes (and the prior) — the combined
+        variance.
     """
     if len(themes) == 0:
         raise ValueError("combine_variances requires at least one theme grid")
-    stack = np.stack([np.asarray(t, dtype=float) for t in themes], axis=-1)
+    grids = list(themes) if prior is None else [*themes, prior]
+    stack = np.stack([np.asarray(t, dtype=float) for t in grids], axis=-1)
     with np.errstate(divide="ignore", invalid="ignore"):
         precision = np.sum(1.0 / stack, axis=-1)
         combined = 1.0 / precision
+
+    if prior is None:
+        with np.errstate(invalid="ignore"):
+            suspect = ~informed_mask(themes) | ~(combined < NODATA_VARIANCE)
+        n_suspect = int(np.count_nonzero(suspect))
+        if n_suspect:
+            warnings.warn(
+                f"combine_variances(prior=None): {n_suspect} of {suspect.size} "
+                "cell-layers are informed by no theme or reach NODATA_VARIANCE, "
+                "so they hold a sentinel-derived value, not a meaningful variance. "
+                "Pass the model's background variance as `prior` (a model theme, "
+                "or constant_prior(...)); see choice 13 in "
+                "docs/bring_your_own_data.md.",
+                GeoSigmaWarning,
+                stacklevel=2,
+            )
     return combined
 
 
@@ -139,7 +212,11 @@ def corr_map(
     well_quality : ndarray, shape (nwells,)
         Per-well quality rating — the **full, unfiltered** per-well array (the
         MATLAB ``wellsp.bor_qual``), not pre-filtered to the zero-thickness
-        subset. See the note on quality indexing below.
+        subset. See the note on quality indexing below. Same convention as the
+        well theme (:class:`~geosigma.themes.well.WellSet`): **1 = best (most
+        reliable)**, higher = worse. The value is stamped into the grid as is,
+        so a source rated the other way round (high = good) must be converted
+        first.
     zero_thickness : ndarray of bool, shape (nwells,)
         True for wells with a defined zero layer thickness (the only ones used).
     dx, dy : float, optional
@@ -148,14 +225,26 @@ def corr_map(
     Returns
     -------
     ndarray, shape (ny, nx)
-        Tie grid, ``NaN`` away from zero-thickness wells.
+        Tie grid: the quality rating of the zero-thickness well in its cell
+        (1 = best), ``NaN`` away from zero-thickness wells. Row 0 is
+        ``grid_y[0]``, the **south** edge, as everywhere in
+        :mod:`geosigma.themes`; ``np.flipud`` it before pairing with a
+        north-up raster.
+
+    Raises
+    ------
+    ValueError
+        If ``grid_x`` or ``grid_y`` is not strictly ascending.
 
     Notes
     -----
     The MATLAB used a hardcoded 100 m cell size and ``ceil`` indexing from the
     lower-left corner; here the spacing is taken from the axes. The cell index is
-    ``ceil((coord - min) / d) - 1`` (0-based), clamped to the grid, reproducing
-    the MATLAB ``ceil`` binning relative to the lower-left corner.
+    ``ceil((coord - min) / d) - 1`` (0-based), reproducing the MATLAB ``ceil``
+    binning relative to the lower-left corner. Wells whose index falls outside
+    the grid are **dropped**, not clamped onto the edge. That includes a well
+    lying exactly on ``min(grid_x)`` or ``min(grid_y)``, whose ``ceil(0) - 1``
+    is ``-1`` -- the same index MATLAB would reject as ``0`` in 1-based terms.
 
     **Quality indexing is bit-faithful to MATLAB.** ``get_corr_maps.m`` takes the
     zero-thickness wells' *coordinates* (``xutm``/``yutm`` filtered by the
@@ -168,8 +257,8 @@ def corr_map(
     in ``TRANSLATION_PLAN.md``). When the zero-thickness wells are the leading
     wells, the two interpretations coincide.
     """
-    grid_x = np.asarray(grid_x, dtype=float)
-    grid_y = np.asarray(grid_y, dtype=float)
+    grid_x = require_ascending("grid_x", grid_x)
+    grid_y = require_ascending("grid_y", grid_y)
     nx, ny = grid_x.size, grid_y.size
     if dx is None:
         dx = float(grid_x[1] - grid_x[0])

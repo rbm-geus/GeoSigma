@@ -24,6 +24,9 @@ import numpy as np
 import pytest
 
 from geosigma.themes import (
+    DANISH_CLASS_FMIN,
+    DANISH_DEPTH_RAMP,
+    GeoSigmaWarning,
     NODATA_VARIANCE,
     ThemeData,
     apply_floor,
@@ -52,6 +55,7 @@ def restore_cert_registry():
     finally:
         cf._CERT_FUNCTIONS.clear()
         cf._CERT_FUNCTIONS.update(saved)
+
 
 # ---------------------------------------------------------------------------
 # Certainty kernels
@@ -136,13 +140,13 @@ def test_combine_parallel_precision():
     a = np.full((2, 2, 1), 4.0)
     b = np.full((2, 2, 1), 4.0)
     # 1 / (1/4 + 1/4) = 2
-    assert np.allclose(combine_variances([a, b]), 2.0)
+    assert np.allclose(combine_variances([a, b], prior=None), 2.0)
 
 
 def test_combine_ignores_infinite_theme():
     a = np.full((3, 3, 2), 5.0)
     b = np.full((3, 3, 2), np.inf)  # no information -> contributes nothing
-    assert np.allclose(combine_variances([a, b]), 5.0)
+    assert np.allclose(combine_variances([a, b], prior=None), 5.0)
 
 
 def test_minimum_map_and_floor():
@@ -172,14 +176,137 @@ def test_corr_map_stamps_zero_thickness_wells():
     assert np.isnan(grid).sum() == 5
 
 
+# --------------------------------------------------------------------------- #
+# Axes must ascend. A descending axis -- what you get by reading coordinates
+# off a north-up raster -- used to return a theme with no data in any cell,
+# with no error, because every open window lo < p < hi became empty.
+# --------------------------------------------------------------------------- #
+_ASC = np.arange(8) * 100.0 + 50.0
+
+
+def test_windowed_nearest_rejects_a_descending_axis():
+    args = (np.array([420.0]), np.array([330.0]))
+    kw = dict(
+        search_radius=3,
+        attributes={"v": np.array([7.0])},
+        reducers={"v": "mean"},
+        n_layers=1,
+    )
+    dist, _ = windowed_nearest(*args, _ASC, _ASC, **kw)
+    assert np.isfinite(dist).any()  # the ascending case genuinely finds data
+    with pytest.raises(ValueError, match="grid_y must be strictly ascending"):
+        windowed_nearest(*args, _ASC, _ASC[::-1], **kw)
+    with pytest.raises(ValueError, match="grid_x must be strictly ascending"):
+        windowed_nearest(*args, _ASC[::-1], _ASC, **kw)
+
+
+def test_corr_map_rejects_a_descending_axis():
+    zt = np.array([True])
+    with pytest.raises(ValueError, match="ascending"):
+        corr_map(_ASC, _ASC[::-1], [150.0], [150.0], [1.0], zt)
+
+
+def test_build_well_theme_rejects_a_descending_axis():
+    from geosigma.themes import build_well_theme
+
+    with pytest.raises(ValueError, match="ascending"):
+        build_well_theme(_ASC, _ASC[::-1], [None], [None])
+
+
+def test_corr_map_drops_rather_than_clamps_out_of_grid_wells():
+    # Its docstring once said "clamped"; the code drops them, which is the
+    # safer behaviour -- clamping would stamp a tie onto an edge cell the
+    # well is not in.
+    grid_x = np.array([0.0, 100.0, 200.0])
+    grid_y = np.array([0.0, 100.0])
+    grid = corr_map(
+        grid_x, grid_y, [5_000.0], [5_000.0], [3.0], [True], dx=100.0, dy=100.0
+    )
+    assert np.isnan(grid).all()
+
+
 def test_model_theme_depth_ramp():
-    # Single class, single layer; depth 100 m, default gradients/fmin.
+    # Single class, single layer; depth 100 m, Danish fmin + Danish depth ramp.
     class_grid = np.zeros((1, 1), dtype=int)  # class 0 -> fmin 20
     terrain = np.array([[100.0]])
     bottom = np.array([[0.0]])
-    theme = model_theme(class_grid, terrain, [bottom])
+    theme = model_theme(
+        class_grid,
+        terrain,
+        [bottom],
+        class_fmin=DANISH_CLASS_FMIN,
+        depth_ramp=DANISH_DEPTH_RAMP,
+    )
     # depth 100 >= 50: ramp = 0.15*100 + (0.3-0.15)*50 + 20 = 42.5; var = (0.5*42.5)^2
     assert theme[0, 0, 0] == pytest.approx((0.5 * 42.5) ** 2)
+
+
+def test_model_theme_requires_explicit_class_fmin():
+    class_grid = np.zeros((1, 1), dtype=int)
+    terrain, bottom = np.array([[100.0]]), np.array([[0.0]])
+    ramp = DANISH_DEPTH_RAMP
+    with pytest.raises(TypeError):
+        model_theme(class_grid, terrain, [bottom], depth_ramp=ramp)
+    with pytest.raises(TypeError):  # keyword-only
+        model_theme(class_grid, terrain, [bottom], DANISH_CLASS_FMIN, ramp)
+    for empty in (None, {}):
+        with pytest.raises(ValueError, match="DANISH_CLASS_FMIN"):
+            model_theme(
+                class_grid, terrain, [bottom], class_fmin=empty, depth_ramp=ramp
+            )
+
+
+def test_model_theme_requires_explicit_depth_ramp():
+    class_grid = np.zeros((1, 1), dtype=int)
+    terrain, bottom = np.array([[100.0]]), np.array([[0.0]])
+    fmin = DANISH_CLASS_FMIN
+    with pytest.raises(TypeError):
+        model_theme(class_grid, terrain, [bottom], class_fmin=fmin)
+    bad_ramps = [
+        None,
+        {},
+        {"break_depth": 50.0, "shallow_gradient": 0.3},  # missing key
+        dict(DANISH_DEPTH_RAMP, grad_abv50=0.15),  # unknown key
+        dict(DANISH_DEPTH_RAMP, deep_gradient=np.nan),
+        dict(DANISH_DEPTH_RAMP, break_depth=-1.0),
+    ]
+    for bad in bad_ramps:
+        with pytest.raises(ValueError, match="depth_ramp"):
+            model_theme(class_grid, terrain, [bottom], class_fmin=fmin, depth_ramp=bad)
+
+
+def test_model_theme_uses_the_given_class_values():
+    class_grid = np.array([[0, 1]])
+    terrain, bottom = np.full((1, 2), 10.0), np.zeros((1, 2))
+    theme = model_theme(
+        class_grid,
+        terrain,
+        [bottom],
+        class_fmin={0: 4.0, 1: 8.0},
+        depth_ramp=DANISH_DEPTH_RAMP,
+    )
+    # depth 10 < 50: ramp = 0.3*10 + fmin
+    np.testing.assert_allclose(theme[0, :, 0], [(0.5 * 7.0) ** 2, (0.5 * 11.0) ** 2])
+
+
+@pytest.mark.parametrize(
+    "depth, expected_ramp",
+    [
+        (10.0, 0.5 * 10.0 + 2.0),  # shallower than the break
+        (20.0, 0.5 * 20.0 + 2.0),  # at the break: deep segment, continuous
+        (60.0, 0.1 * 60.0 + (0.5 - 0.1) * 20.0 + 2.0),  # deeper than the break
+    ],
+)
+def test_model_theme_custom_depth_ramp(depth, expected_ramp):
+    ramp = {"break_depth": 20.0, "shallow_gradient": 0.5, "deep_gradient": 0.1}
+    theme = model_theme(
+        np.zeros((1, 1), dtype=int),
+        np.array([[depth]]),
+        [np.zeros((1, 1))],
+        class_fmin={0: 2.0},
+        depth_ramp=ramp,
+    )
+    assert theme[0, 0, 0] == pytest.approx((0.5 * expected_ramp) ** 2)
 
 
 # ---------------------------------------------------------------------------
@@ -387,8 +514,8 @@ def _first_reducer_case():
     ys = np.array([40.0, 200.0])
     attributes = {
         "depth": np.array([[50.0, 50.0], [10.0, 10.0]]),
-        "doi": np.array([200.0, 200.0]),     # never masks (doi > depth)
-        "mep_type": np.array([1.0, 0.0]),    # first=wenner, nearest=not-wenner
+        "doi": np.array([200.0, 200.0]),  # never masks (doi > depth)
+        "mep_type": np.array([1.0, 0.0]),  # first=wenner, nearest=not-wenner
     }
     return grid_x, grid_y, xs, ys, attributes, n_layers
 
@@ -410,8 +537,14 @@ def test_first_reducer_matches_naive_and_picks_window_first():
     assert fast["mep_type"][2, 2, 0] == 1.0
     # ...whereas a tie-set reducer would pick the nearest point (type 0).
     _, near = windowed_nearest(
-        xs, ys, grid_x, grid_y, 2,
-        {"mep_type": attributes["mep_type"]}, {"mep_type": "mean"}, n_layers,
+        xs,
+        ys,
+        grid_x,
+        grid_y,
+        2,
+        {"mep_type": attributes["mep_type"]},
+        {"mep_type": "mean"},
+        n_layers,
     )
     assert near["mep_type"][2, 2, 0] == 0.0
 
@@ -423,20 +556,34 @@ def test_mep_var0_depends_on_acquisition_type():
     spec = theme_specs.mep_spec(n_prereq=1, doi_fill=50.0)
 
     g_w = build_theme(
-        ThemeData(xs=xs, ys=ys,
-                  attributes={**attributes, "mep_type": np.array([1.0, 1.0])},
-                  complexity=complexity),
-        spec, grid_x, grid_y, n_layers,
+        ThemeData(
+            xs=xs,
+            ys=ys,
+            attributes={**attributes, "mep_type": np.array([1.0, 1.0])},
+            complexity=complexity,
+        ),
+        spec,
+        grid_x,
+        grid_y,
+        n_layers,
     )
     g_n = build_theme(
-        ThemeData(xs=xs, ys=ys,
-                  attributes={**attributes, "mep_type": np.array([0.0, 0.0])},
-                  complexity=complexity),
-        spec, grid_x, grid_y, n_layers,
+        ThemeData(
+            xs=xs,
+            ys=ys,
+            attributes={**attributes, "mep_type": np.array([0.0, 0.0])},
+            complexity=complexity,
+        ),
+        spec,
+        grid_x,
+        grid_y,
+        n_layers,
     )
     informative = (
-        (g_w < NODATA_VARIANCE) & np.isfinite(g_w)
-        & (g_n < NODATA_VARIANCE) & np.isfinite(g_n)
+        (g_w < NODATA_VARIANCE)
+        & np.isfinite(g_w)
+        & (g_n < NODATA_VARIANCE)
+        & np.isfinite(g_n)
     )
     assert informative.any()
     assert not np.allclose(g_w[informative], g_n[informative])
@@ -462,7 +609,7 @@ def test_pacep_doi_fill_after_reduction():
     ys = np.array([100.0])
     attributes = {
         "depth": np.array([[10.0]]),
-        "doi": np.array([np.nan]),   # missing -> filled with 15 after reduction
+        "doi": np.array([np.nan]),  # missing -> filled with 15 after reduction
     }
     complexity = np.full((3, 3), 2.0)
     spec = theme_specs.pacep_spec(n_prereq=1)
@@ -479,9 +626,13 @@ def test_missing_complexity_defaults_to_uniform_class_one():
         ThemeData(xs=xs, ys=ys, attributes=attributes), spec, grid_x, grid_y, n_layers
     )
     g_one = build_theme(
-        ThemeData(xs=xs, ys=ys, attributes=attributes,
-                  complexity=np.ones_like(complexity)),
-        spec, grid_x, grid_y, n_layers,
+        ThemeData(
+            xs=xs, ys=ys, attributes=attributes, complexity=np.ones_like(complexity)
+        ),
+        spec,
+        grid_x,
+        grid_y,
+        n_layers,
     )
     np.testing.assert_array_equal(g_none, g_one)
 
@@ -511,5 +662,8 @@ def test_build_theme_golden():
             theme_specs.ttem_spec(n_prereq=2),
         ]
     }
-    final = combine_variances(list(grids.values()))
+    # prior=None keeps the golden combine unchanged; cells no theme informs
+    # trigger the (expected) GeoSigmaWarning.
+    with pytest.warns(GeoSigmaWarning):
+        final = combine_variances(list(grids.values()), prior=None)
     assert_matches_golden("themes_synthetic", **grids, combined=final)

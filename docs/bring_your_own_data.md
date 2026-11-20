@@ -13,18 +13,27 @@ This document is the practitioner's guide to configuring a theme for your own
 region and data. It is organised around the **distinct scientific choices** a
 theme author must make. Each is a question that different geology or a different
 data type could reasonably answer differently; none is an implementation detail.
-There are twelve, in two groups:
+There are thirteen, in three groups:
 
 - **Part A — choices expressed in the `ThemeSpec`** (eight). The spec is a plain
   dataclass; these are its fields and the formulae it carries.
 - **Part B — choices in the per-point preparation layer** (four). These are made
   *before* the spec is applied, when a raw source is turned into the point cloud
   and attributes the engine consumes.
+- **Part C — the choice made at combination** (one). How uncertain the model is
+  where no data say anything: the background variance (`prior`) that every
+  combined variance map needs.
+
+Boreholes have a builder of their own (`build_well_theme`) rather than a
+`ThemeSpec`, so they are covered separately in **Part D — boreholes**, including
+the quality-rating convention that the borehole tables depend on.
 
 For each choice you get: the **question** in plain terms, the **parameter(s)**
 that express the answer, **how to reason about it** for your own setting, and the
-**Danish answers** as worked illustrations. The Danish values come from the
-national hydrostratigraphic model (the DK-model); their scientific justification
+**Danish answers** as worked illustrations. The Danish values are **calibrated to
+the Danish national hydrostratigraphic model** (the DK-model). They are examples
+of reasoning, not defaults: do not reuse them for another model without your own
+justification. Their scientific justification
 is the subject of a forthcoming publication — cited below as
 **[methods citation]** (placeholder, to be filled on publication).
 
@@ -472,6 +481,186 @@ than reading a per-sounding value.
 
 ---
 
+# Part C — the choice made at combination
+
+Parts A and B configure one information source at a time. One choice belongs to
+none of them, because it is about the model rather than about any source, and it
+is made once, when the themes are combined.
+
+## Choice 13 — How uncertain is the model where no data say anything?
+
+**Question.** Away from every data source, how far could each layer boundary of
+the model plausibly be from where the model puts it? This is the uncertainty of
+the model itself before any data are considered: its background variance, or
+prior.
+
+**Parameter.** The required `prior` argument of `combine_variances` (and
+`--prior DIR` / `--no-prior` on the command line). It takes a
+`(ny, nx, n_layers)` variance grid, in one of two forms:
+
+- a **model theme**,
+  `model_theme(class_grid, terrain, layer_bottoms, class_fmin={...}, depth_ramp={...})`:
+  a background variance per layer that grows with depth and can differ between
+  parts of the model (quality classes). Both arguments are required; there are
+  no built-in defaults. `class_fmin` maps each quality class to its surface
+  value. `depth_ramp` says how that value grows with depth: a `break_depth`
+  [m], a `shallow_gradient` above the break and a `deep_gradient` below it (a
+  continuous two-segment line; equal gradients give a single straight line);
+- at minimum, a **constant background variance per layer**,
+  `constant_prior(variance_per_layer, shape)`: the same variance at every cell of
+  a layer.
+
+`prior=None` is accepted, but it has to be written out: it states that the model
+has no background uncertainty you are willing to put a number on.
+`combine_variances` then warns (`GeoSigmaWarning`) wherever a cell is informed by
+no theme, because those cells keep a value derived from the no-information
+sentinel (`100000`, or `100000 / N` once `N` sentinel themes are combined; see
+*Two kinds of "no information"* under choice 7). That value is an artefact, not a
+variance, and it ruins every colour scale and every downstream use.
+
+**Reasoning for your setting.** Ask what you would say about a boundary's depth
+in a corner of the model with no boreholes and no geophysics. You still know
+something: the model exists, it was built from regional geology and
+interpretation, and its deeper boundaries are less certain than its shallower
+ones. That knowledge is the prior. Typical inputs to the decision:
+
+- **Depth.** Uncertainty almost always grows with depth below terrain, which is
+  why a model theme ramps the variance with depth rather than holding it
+  constant.
+- **Model quality.** If parts of the model were built more carefully, or from
+  better regional data, give them a lower background variance (separate quality
+  classes in `class_grid`).
+- **Scale.** Express the answer as a standard deviation in metres first ("this
+  boundary could be ±15 m off here"), then square it; a variance is hard to judge
+  by eye.
+
+A constant per layer is the minimal honest answer when you cannot justify more
+structure:
+
+```python
+import numpy as np
+from geosigma.themes import combine_variances, constant_prior
+
+# Background standard deviation per layer boundary [m], shallow to deep.
+background_std = np.array([5.0, 10.0, 20.0])
+prior = constant_prior(background_std**2, shape=(ny, nx))
+
+final_variance = combine_variances(theme_grids, prior=prior)
+```
+
+**Prior versus hard bound.** It is tempting to get the same effect by clipping:
+`np.minimum(combined, cap)`. The two are not the same.
+
+| | Prior (model theme or `constant_prior`) | Hard bound (clipping) |
+|---|---|---|
+| How it enters | One more term in the precision sum: `1 / (Σ 1/θ + 1/σ²_prior)` | Applied after combining: `min(combined, cap)` |
+| Upper limit | Automatic: the result can never exceed the prior | Exactly `cap`, by construction |
+| Where data exist | Refines them slightly, as one more independent piece of information | Leaves them untouched |
+| Where data are weak | Blends smoothly from data-dominated to prior-dominated | Abrupt kink where the combined value crosses `cap` |
+| What it claims | That the model itself is information, with a stated uncertainty | Nothing; it only hides large values |
+
+The prior is the statistically consistent choice: it is the same precision
+addition that combines the themes (see the design invariant in Part A), applied
+to one more source, namely the model. Clipping adds no information, says nothing
+about how certain the model actually is, and introduces a discontinuity the
+kriging stage cannot account for. GeoSigma therefore offers the prior and not
+the clip.
+
+**Danish model, for illustration only [methods citation].** The values below are
+**calibrated to the Danish national hydrostratigraphic model**. They are not
+defaults and should not be copied to another model without your own
+justification. The Danish model uses a model theme (`get_modeltheme.m` in the
+reference implementation): each cell belongs to one of six model-quality classes,
+each class sets a surface value `f_min` between 10 and 20 m, and the value grows
+by 0.3 m per metre of depth down to 50 m and by 0.15 m per metre below; the
+variance is `(0.5 · ramp)²`. These values are available as
+`geosigma.themes.DANISH_CLASS_FMIN` (the class values) and
+`geosigma.themes.DANISH_DEPTH_RAMP` (`break_depth` 50, `shallow_gradient` 0.3,
+`deep_gradient` 0.15), but `model_theme` never uses them unless you pass them
+yourself.
+The model theme is always part of the Danish combination, so inside the
+modelled area the final variance map is bounded by it.
+
+---
+
+# Part D — boreholes
+
+A borehole informs a layer boundary where it reaches it, and how much it is
+trusted depends on how well it is described. That makes the borehole theme
+different enough from the geophysical themes to have its own builder,
+`geosigma.themes.build_well_theme` (MATLAB `get_well_theme.m`):
+
+- each cell sums the certainty of up to three nearest boreholes inside the
+  search window (`n_nearest = 3`, `search_radius = 6` cells), instead of using
+  the single nearest location;
+- the decay is a plain Gaussian, `sill · exp(-3 d² / range²)`, with no plateau;
+- the range comes from the complexity class **at the borehole**, not at the
+  cell;
+- each layer has its own borehole list (the boreholes that were interpreted at,
+  or reach, that boundary), and there are two lists per layer: interpreted
+  ("snapped") boreholes and other database boreholes (in Denmark, Jupiter). The
+  layer's variance is `1 / (snapped precision + database precision)`.
+
+The per-layer lists are passed as `WellSet` objects. The choice that needs care
+is the quality rating.
+
+## The quality rating: 1 = best
+
+**Convention.** Every borehole carries an integer quality class `q`, from
+**1 = best (most reliable)** to **n = worst**, where `n` is the length of the
+tables below. The base variance of a borehole at depth `z` below terrain is
+
+```
+var0 = K[q]² + (gradient[q] · z)²        sill = 1 / var0
+```
+
+with `K` (a depth-independent floor, in metres) and `gradient` (how fast the
+uncertainty grows with depth) given per quality class, in the same order: index
+0 is quality 1, the last index is the worst quality. The tables must therefore
+**grow** from first to last entry, so that a worse borehole gets a larger
+variance and counts for less. GeoSigma has no built-in tables; you pass them on
+each `WellSet`. The same convention applies to the quality stamped into the
+zero-thickness tie grid by `corr_map`.
+
+**Reasoning for your setting.** Decide what separates a good borehole from a
+poor one in your data: how the lithology was described (by a geologist, from
+cuttings, from a driller's log), when it was drilled, whether it has been
+checked against geophysics. Rank those into classes, best first, and give each
+class a floor `K` and a gradient that reflect how far a boundary pick from such a
+borehole could plausibly be off. Interpreted boreholes that the modeller has
+already tied the surfaces to deserve smaller values than raw database boreholes.
+
+**Danish tables, for illustration only [methods citation].** The Danish
+national model uses four classes and different tables for the two borehole
+lists (`get_well_theme.m`, values of 27 June 2023). They are calibrated to that
+model and are not defaults:
+
+| | Quality 1 (best) | 2 | 3 | 4 (worst) |
+|---|---|---|---|---|
+| Interpreted (snapped): `K` [m] | 0.15 | 1.0 | 2.0 | 2.5 |
+| Interpreted (snapped): `gradient` | 0.010 | 0.015 | 0.035 | 0.050 |
+| Jupiter: `K` [m] | 0.4 | 1.5 | 2.5 | 3.0 |
+| Jupiter: `gradient` | 0.0125 | 0.0175 | 0.0375 | 0.0525 |
+
+(The MATLAB source writes the gradients as `0.5 * [0.02 0.03 0.07 0.1]` and
+`0.5 * [0.025 0.035 0.075 0.105]`.) The range table by complexity class is
+`(100, 500, 400, 250, 100)` m for class 0 (unknown) to 4, the default
+`comp2range` of `build_well_theme`.
+
+> **Check the direction of your source's rating before you use it.** The
+> builder only indexes the tables; it cannot tell a reversed scale from a
+> correct one, and a reversed scale gives plausible-looking maps in which the
+> best-described boreholes count least. Some sources rate boreholes the other
+> way round (high = good). In the Danish national run this happened: the quality
+> rating in the borehole data was computed by a data-preparation script from
+> the Danish Environmental Protection Agency (Miljøstyrelsen, MST), and that
+> script turned out to swap good and bad. Neither the MATLAB code nor GeoSigma
+> was at fault; the inputs were reversed. Before building the `WellSet`s,
+> confirm on a few boreholes you know that the ones you trust most carry the
+> lowest numbers, and convert the rating if they do not.
+
+---
+
 # A complete worked example
 
 To show the whole path start to finish, here is a **fictional, non-Danish** theme:
@@ -481,7 +670,7 @@ an alluvial basin. Each sounding reports an interpreted bedrock depth and a
 depth-of-investigation analogue. Bedrock is a single deepening surface, so we treat
 every modelled layer the same and use no complexity grid.
 
-We make each of the twelve choices explicitly.
+We make each of the thirteen choices explicitly.
 
 ```python
 import numpy as np
@@ -617,6 +806,23 @@ the three-file format specified in [`theme_format.md`](theme_format.md):
   and its `max_resolved_depth` to `spread_reach`; no fixed overrides.
 
 That is a complete theme: eight spec choices in Python, four preparation choices in
-the adapter, and a variance map out of `build_theme` — with no weighting anywhere,
-because each theme's honesty about its own uncertainty is what the combination
-needs (see the design invariant in Part A).
+the adapter, and a variance map out of `build_theme`.
+
+The last choice is made when combining. Here the refraction survey is the only
+theme, and the basin model's own uncertainty (**choice 13**) is stated as a
+constant background standard deviation per boundary: 8, 15 and 25 m, deepening
+with the boundaries.
+
+```python
+from geosigma.themes import combine_variances, constant_prior
+
+prior = constant_prior(np.array([8.0, 15.0, 25.0]) ** 2, shape=grid.shape[:2])
+final = combine_variances([grid], prior=prior)
+```
+
+Every cell of `final` now carries a finite variance no larger than the prior:
+close to the refraction picks it is set by the survey, and far from them it
+relaxes to the basin model's own uncertainty. There is no weighting anywhere,
+because each theme's honesty about its own uncertainty, and the model's honesty
+about its own, is what the combination needs (see the design invariant in
+Part A).

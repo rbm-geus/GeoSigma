@@ -70,13 +70,15 @@ from .spec_io import (
     load_spec_yaml,
 )
 from .combine import (
+    GeoSigmaWarning,
     apply_floor,
     combine_variances,
+    constant_prior,
     corr_map,
     informed_mask,
     minimum_map,
 )
-from .model_theme import model_theme
+from .model_theme import DANISH_CLASS_FMIN, DANISH_DEPTH_RAMP, model_theme
 from .well import WellSet, build_well_theme
 from .io import (
     DISPLAY_NODATA,
@@ -105,11 +107,15 @@ __all__ = [
     "available_certainty_functions",
     "register_certainty_function",
     "combine_variances",
+    "constant_prior",
+    "GeoSigmaWarning",
     "minimum_map",
     "apply_floor",
     "corr_map",
     "informed_mask",
     "model_theme",
+    "DANISH_CLASS_FMIN",
+    "DANISH_DEPTH_RAMP",
     "read_variance_stack",
     "write_variance_stack",
     "write_display_stack",

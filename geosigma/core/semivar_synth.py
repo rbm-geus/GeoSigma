@@ -39,7 +39,7 @@ def semivar_synth(V, d):
     elif model.startswith("exp"):
         gamma = var * (1 - np.exp(-3 * h / range_))
     elif model.startswith("gau"):
-        gamma = var * (1 - np.exp(-((h / range_) ** 2)))
+        gamma = var * (1 - np.exp(-3 * (h / range_) ** 2))
     else:
         raise ValueError(f"Unknown variogram model '{V['type']}'")
 

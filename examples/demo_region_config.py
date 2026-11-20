@@ -24,7 +24,9 @@ def main() -> None:
     # surface_dir in the sample config is relative to the repository root.
     cfg.surface_dir = str(HERE.parent / cfg.surface_dir)
     print(f"Region: {cfg.name}")
-    print(f"{cfg.n_interfaces} interfaces, {cfg.n_modelled_layers} modelled boundaries\n")
+    print(
+        f"{cfg.n_interfaces} interfaces, {cfg.n_modelled_layers} modelled boundaries\n"
+    )
 
     # Reference grid = the terrain/top surface.
     _, ref_meta = load_geotiff_grid(str(cfg.surface_path(0)))
