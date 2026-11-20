@@ -19,7 +19,7 @@
     "layer_15_bottom"
   ],
   "has_bottom": false,
-  "surface_dir": "../examples/data/Jutland_hydrostrat_model",
+  "surface_dir": "../data/Jutland_hydrostrat_model",
   "file_ext": ".tif",
   "crs": "EPSG:25832",
   "metadata": {
