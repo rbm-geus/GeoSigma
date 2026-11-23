@@ -254,12 +254,18 @@ A referenced complexity grid may be any of:
 Any other extension raises.
 
 The grid must be **co-registered with the working grid** the theme is evaluated
-on. When the caller supplies the working grid's metadata, a path-loaded grid is
-required to match it in shape, cell spacing, and origin; a grid that differs
-raises as "not aligned". (The coordinate reference system and no-data sentinel are
-not part of this check.) If no working-grid metadata is supplied, the grid is
-loaded without an alignment check and alignment becomes the depositor's
-responsibility.
+on: the same origin, cell size and number of cells, one complexity cell per
+model cell. GeoSigma never resamples, shifts, crops or pads a complexity grid.
+Putting a map on the model grid (cropping a larger map, shifting it by part of a
+cell, or voting a finer or coarser map onto the model cells) is the user's
+preparation step, done once before the run; the Bjerringbro example's
+`data_prep/crop_complexity.py` is a worked example. When the caller supplies the
+working grid's metadata, a path-loaded grid is required to match it in shape,
+cell spacing, and origin; a grid that differs raises as "not aligned". (The
+coordinate reference system and no-data sentinel are not part of this check.)
+If no working-grid metadata is supplied, the grid is loaded without an
+alignment check and alignment becomes the depositor's responsibility. A grid
+supplied as an array (`external`) must have the working grid's shape.
 
 ### 4.2 Class semantics and class order
 

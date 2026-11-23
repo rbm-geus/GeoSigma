@@ -71,7 +71,7 @@ examples/bjerringbro/
 ├── region_config.json        layer list and location of the model surfaces
 ├── data/
 │   ├── FohmLayers.csv        model layer -> FOHM layer number and name
-│   └── complexity_bjerringbro.tif   excerpt of the geological complexity map
+│   └── complexity_bjerringbro.tif   complexity map on the model grid (excerpt)
 ├── geosigma_dk_workflow.py   main script: themes -> variance maps
 ├── geofysik/                 ThemeData bundles (points CSV + manifest) per method
 │   ├── skytem/               SkyTEM            -> spec skytem
@@ -84,7 +84,7 @@ examples/bjerringbro/
 │   ├── gerda_db.py               reads GERDA exports (Access .mdb or Firebird .fdb)
 │   ├── gerda_to_themedata.py     GERDA models -> ThemeData bundle
 │   ├── wells_to_csv.py           Jupiter (+ interpretation points) -> wells.csv
-│   └── crop_complexity.py        national complexity map -> data/ excerpt
+│   └── crop_complexity.py        national complexity map -> model grid
 
 ```
 
@@ -110,10 +110,10 @@ The well input was made from the Jupiter extract:
 python data_prep/wells_to_csv.py --region-config region_config.json --jupiter boringer/jupiter.csv --out boringer/wells.csv
 ```
 
-The complexity-map excerpt was cut from the national map:
+The complexity map was put on the model grid from the national map:
 
 ```bash
-python data_prep/crop_complexity.py --source ../../matlab_reference/N-ret-mod---Source-main/Kompleksitetskort.grd     --region-config region_config.json --out data/complexity_bjerringbro.tif
+python data_prep/crop_complexity.py --source ../../matlab_reference/N-ret-mod---Source-main/Kompleksitetskort.grd --order higher_is_more_complex --region-config region_config.json --out data/complexity_bjerringbro.tif
 ```
 
 Each manifest's `_notes` records the source file and how many soundings were kept.
@@ -125,7 +125,7 @@ Each manifest's `_notes` records the source file and how many soundings were kep
   ("snapped" wells) are included, and no `--model-year` filter was applied, so
   wells drilled after the model was made are counted too.
 - **The complexity map is a provisional proxy.** `data/complexity_bjerringbro.tif`
-  is an excerpt of the national map (the model grid plus 1 km), cut with
+  is an excerpt of the national map on the model grid, made with
   `data_prep/crop_complexity.py`; see "Geological complexity map" below and
   `docs/theme_format.md`.
 - **The model-quality class is uniform** (class 2 everywhere), because no
@@ -238,8 +238,25 @@ The 15 layer boundaries are read from
 ### Geological complexity map
 
 The correlation ranges depend on a geological complexity map. The example
-ships an excerpt of the national map, `data/complexity_bjerringbro.tif` (the
-model grid plus 1 km, cells unchanged), cut with `data_prep/crop_complexity.py`.
+ships an excerpt of the national map, `data/complexity_bjerringbro.tif`, on
+exactly the model grid (100 × 100 cells of 100 m). GeoSigma does not adapt a
+complexity map to the model: the workflow reads the map and stops with an
+error if it does not lie on the model grid. Putting it there is a preparation
+step, done once by `data_prep/crop_complexity.py`:
+
+- **Same cell size** (as here: both 100 m). The national map's cell edges lie
+  50 m off the model's, so the map is shifted +50 m east and north, as in
+  MATLAB's `import_complexitymap.m`, and each model cell takes the class of the
+  map cell 50 m to its south-west. Classes are copied one to one, never mixed.
+- **Different cell size.** Each model cell takes the most frequent class of
+  4 × 4 sample points (a majority vote); a tie goes to the most complex class,
+  which gives the shorter range and so the more conservative uncertainty.
+
+Before this, the workflow did a majority vote itself at every run. The
+shifted copy gives a different class in 216 of the 10 000 model cells (186
+from 3 to 2, 30 from 2 to 3). The final variance maps are unchanged, because
+the geophysics manifests use `complexity: none` and no borehole lies in a
+changed cell.
 It is a provisional proxy; see the limitations above and `docs/theme_format.md`.
 
 The map divides onshore Denmark into four classes of expected geological
