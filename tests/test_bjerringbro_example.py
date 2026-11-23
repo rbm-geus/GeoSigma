@@ -21,13 +21,17 @@ from geosigma.themes.themes import _COMP2RANGE, _COMP2RANGE_PREQ
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "bjerringbro"
 
 
-def _workflow_config():
+def _workflow():
     spec = importlib.util.spec_from_file_location(
         "bjerringbro_workflow", EXAMPLE / "geosigma_dk_workflow.py"
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.CONFIG
+    return module
+
+
+def _workflow_config():
+    return _workflow().CONFIG
 
 
 def _stack_index(layer_no):
@@ -69,3 +73,100 @@ def test_bottom_of_layer_10_quaternary_bottom_of_layer_11_pre_quaternary(spec_na
         np.testing.assert_array_equal(ranges[0, :, i], quaternary)
     for i in range(_stack_index(11), 15):
         np.testing.assert_array_equal(ranges[0, :, i], pre_quaternary)
+
+
+# --------------------------------------------------------------------------- #
+# Complexity class order
+# --------------------------------------------------------------------------- #
+def test_config_declares_the_danish_map_as_higher_is_more_complex():
+    conf = _workflow_config()
+    assert conf["complexity_grid"]
+    assert conf["complexity_order"] == "higher_is_more_complex"
+
+
+def test_missing_complexity_order_is_an_error():
+    wf = _workflow()
+    conf = wf.resolve_paths(wf.CONFIG)
+    conf.pop("complexity_order")
+    with pytest.raises(ValueError, match="complexity_order"):
+        wf.load_support_grids(conf, np.zeros((1, 1)), None)
+
+
+def _write_asc(path, z, meta):
+    """ESRI ASCII grid (north-up rows) on the model grid's corner and cell size."""
+    lines = [
+        f"ncols {z.shape[1]}",
+        f"nrows {z.shape[0]}",
+        f"xllcorner {meta['xllcorner']}",
+        f"yllcorner {meta['yllcorner']}",
+        f"cellsize {meta['dx']}",
+        "NODATA_value -9999",
+    ]
+    lines += [" ".join(str(int(v)) for v in row) for row in z]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_lower_is_more_complex_mirrors_classes_on_an_aligned_grid(tmp_path):
+    # A grid whose cells coincide with the model cells has no tied votes, so
+    # reversing the order must mirror every class (0 = unknown stays 0).
+    wf = _workflow()
+    conf = wf.resolve_paths(wf.CONFIG)
+    _, meta, *_ = wf.load_model(conf["region_config"])
+    rng = np.random.default_rng(0)
+    z = rng.integers(0, 5, size=(meta["nrows"], meta["ncols"]))
+    path = tmp_path / "classes.asc"
+    _write_asc(path, z, meta)
+    higher = wf.class_grid_to_model(path, meta, "c", order="higher_is_more_complex")
+    lower = wf.class_grid_to_model(
+        path, meta, "c", order="lower_is_more_complex", n_classes=4
+    )
+    np.testing.assert_array_equal(higher, np.flipud(z))
+    np.testing.assert_array_equal(lower, np.where(higher > 0, 5 - higher, 0))
+
+
+def test_tied_votes_go_to_the_more_complex_class_in_either_order(tmp_path):
+    # Shift a two-class grid by half a cell so every model cell straddles a
+    # 2 | 3 boundary: the tie must give the more complex class (internal 3)
+    # whichever way the file is coded.
+    wf = _workflow()
+    conf = wf.resolve_paths(wf.CONFIG)
+    _, meta, *_ = wf.load_model(conf["region_config"])
+    shifted = dict(meta, xllcorner=meta["xllcorner"] - meta["dx"] / 2)
+    ncols = meta["ncols"] + 1
+    row = np.where(np.arange(ncols) % 2 == 0, 2, 3)
+    z = np.tile(row, (meta["nrows"], 1))
+    path = tmp_path / "ties.asc"
+    _write_asc(path, z, shifted)
+    higher = wf.class_grid_to_model(path, meta, "c", order="higher_is_more_complex")
+    assert np.all(higher == 3)
+    # Same geology coded the other way round (file 3 = less complex).
+    _write_asc(path, 5 - z, shifted)
+    lower = wf.class_grid_to_model(
+        path, meta, "c", order="lower_is_more_complex", n_classes=4
+    )
+    assert np.all(lower == 3)
+
+
+def test_gerda_converter_requires_an_order_for_a_grid_path():
+    spec = importlib.util.spec_from_file_location(
+        "gerda_to_themedata", EXAMPLE / "data_prep" / "gerda_to_themedata.py"
+    )
+    g2t = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(g2t)
+    decl = g2t.complexity_declaration
+    assert decl("none") == "none"
+    assert decl("external") == "external"
+    assert (
+        decl("c.tif", "higher_is_more_complex")
+        == "{path: c.tif, order: higher_is_more_complex}"
+    )
+    assert (
+        decl("c.tif", "lower_is_more_complex", 4)
+        == "{path: c.tif, order: lower_is_more_complex, n_classes: 4}"
+    )
+    with pytest.raises(ValueError, match="complexity-order"):
+        decl("c.tif")
+    with pytest.raises(ValueError, match="n-classes"):
+        decl("c.tif", "lower_is_more_complex")
+    with pytest.raises(ValueError, match="only apply"):
+        decl("none", "higher_is_more_complex")

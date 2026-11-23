@@ -243,11 +243,19 @@ model grid plus 1 km, cells unchanged), cut with `data_prep/crop_complexity.py`.
 It is a provisional proxy; see the limitations above and `docs/theme_format.md`.
 
 The map divides onshore Denmark into four classes of expected geological
-complexity, from high (C-index 1) to low (C-index 4). It describes roughly
-the uppermost 30 m of the subsurface, is a basic, low-resolution map (not
-intended for scales finer than about 1:300 000) and is described by its
-author as preliminary. This is why GeoSigma treats a complexity map as
-optional and why it is used here for the shallow layers only.
+complexity. The report numbers them with a C-index from high (C-index 1) to
+low (C-index 4). The map file is coded the other way round: its value is
+5 − C-index, so in the file 1 = low and 4 = high complexity. That is also
+GeoSigma's internal order (a higher class is more complex), so the workflow
+declares `"complexity_order": "higher_is_more_complex"` in `CONFIG` and the
+values are used as they are. The setting is required whenever a complexity
+grid is given; a map coded like the report would be declared
+`"lower_is_more_complex"` with `"complexity_n_classes": 4` and reversed on
+loading. The map describes roughly the uppermost 30 m of the subsurface, is a
+basic, low-resolution map (not intended for scales finer than about
+1:300 000) and is described by its author as preliminary. This is why
+GeoSigma treats a complexity map as optional and why it is used here for the
+shallow layers only.
 
 | | |
 |---|---|

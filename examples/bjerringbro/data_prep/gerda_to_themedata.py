@@ -60,6 +60,15 @@ Usage
         --name paces --spec paces --attributes depth --out geofysik/paces
 
     python gerda_to_themedata.py --demo     # fakes a GERDA-like export and converts it
+
+The manifest's complexity is ``none`` by default. ``--complexity external`` takes
+the grid from the workflow at run time; a grid path must also say which way its
+classes run (no default), e.g.::
+
+    --complexity ../../data/complexity_bjerringbro.tif \
+        --complexity-order higher_is_more_complex
+
+(``lower_is_more_complex`` also needs ``--complexity-n-classes 4``.)
 """
 
 from __future__ import annotations
@@ -70,6 +79,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from geosigma.themes import COMPLEXITY_ORDERS
 
 # >>> YOUR DATA: map YOUR export's header names -> the names this script expects.
 # Leave a key out if your file already uses the expected name.
@@ -264,6 +275,36 @@ def filter_rows(df, datatype=None, subtype=None, min_layers=None, max_layers=Non
     return df
 
 
+def complexity_declaration(complexity, order=None, n_classes=None):
+    """The manifest's ``complexity`` value for ``--complexity``.
+
+    ``none`` and ``external`` are written as they are. A grid path must come with
+    its class order (``--complexity-order``; no default), and
+    ``lower_is_more_complex`` also with ``--complexity-n-classes``.
+    """
+    if str(complexity).strip().lower() in ("none", "uniform", "external"):
+        if order is not None or n_classes is not None:
+            raise ValueError(
+                "--complexity-order / --complexity-n-classes only apply to a "
+                f"complexity grid path, not to {complexity!r}"
+            )
+        return complexity
+    if order not in COMPLEXITY_ORDERS:
+        raise ValueError(
+            f"--complexity {complexity} is a grid path: give --complexity-order "
+            f"as one of {list(COMPLEXITY_ORDERS)} (there is no default)"
+        )
+    decl = f"{{path: {complexity}, order: {order}"
+    if order == "lower_is_more_complex":
+        if n_classes is None:
+            raise ValueError(
+                "--complexity-order lower_is_more_complex needs "
+                "--complexity-n-classes (e.g. 4)"
+            )
+        decl += f", n_classes: {int(n_classes)}"
+    return decl + "}"
+
+
 def convert(
     gerda,
     region_config,
@@ -277,7 +318,12 @@ def convert(
     subtype=None,
     min_layers=None,
     max_layers=None,
+    complexity_order=None,
+    complexity_n_classes=None,
 ):
+    complexity_yaml = complexity_declaration(
+        complexity, complexity_order, complexity_n_classes
+    )
     cfg, meta, gx, gy, terrain, bottoms = load_model_surfaces(region_config)
     n_layers = cfg.n_modelled_layers
 
@@ -403,7 +449,7 @@ crs: EPSG:25832
 x_column: x
 y_column: y
 attributes:
-{attr_yaml}complexity: {complexity}
+{attr_yaml}complexity: {complexity_yaml}
 _notes:
   source: "GERDA export {Path(gerda).name}"
   filtering: "{filtering}"
@@ -468,6 +514,16 @@ if __name__ == "__main__":
     ap.add_argument("--min-year", type=int)
     ap.add_argument(
         "--complexity", default="none", help="none | external | path to grid"
+    )
+    ap.add_argument(
+        "--complexity-order",
+        choices=COMPLEXITY_ORDERS,
+        help="required with a grid path: which way its classes run",
+    )
+    ap.add_argument(
+        "--complexity-n-classes",
+        type=int,
+        help="number of classes; required with lower_is_more_complex",
     )
     ap.add_argument("--out", default="theme_out")
     ap.add_argument(
@@ -545,4 +601,6 @@ if __name__ == "__main__":
             a.subtype,
             a.min_layers,
             a.max_layers,
+            a.complexity_order,
+            a.complexity_n_classes,
         )

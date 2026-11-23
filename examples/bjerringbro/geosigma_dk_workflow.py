@@ -42,6 +42,7 @@ import pandas as pd
 
 from geosigma.config import RegionConfig
 from geosigma.themes import (
+    COMPLEXITY_ORDERS,
     DANISH_CLASS_FMIN,
     DANISH_DEPTH_RAMP,
     NODATA_VARIANCE,
@@ -55,6 +56,7 @@ from geosigma.themes import (
     load_theme_data,
     minimum_map,
     model_theme,
+    orient_complexity,
     resolve_theme_spec,
     write_display_stack,
     write_variance_stack,
@@ -86,12 +88,20 @@ CONFIG = {
     # CRS normally EPSG:25832 (ETRS89 / UTM 32N).
     "region_config": "region_config.json",
     # --- STEP 2: support grids (optional) -------------------------------------
-    # >>> YOUR DATA: geological-complexity class grid (integers 1-4, 0 = unknown),
-    # aligned with the model grid. Sets the correlation range (500/400/250/100 m in
-    # the Danish specs). GEUS may share their national complexity proxy; otherwise
-    # set to None => uniform class 1 (a single, long range everywhere).
-    # excerpt, see data_prep/crop_complexity.py
+    # >>> YOUR DATA: geological-complexity class grid (integers 1-4, 0 = unknown).
+    # Sets the correlation range (500/400/250/100 m for classes 1-4 in the Danish
+    # specs, least to most complex). Set to None => uniform class 1 (a single,
+    # long range everywhere). Here: an excerpt of the national map, see
+    # data_prep/crop_complexity.py.
     "complexity_grid": "data/complexity_bjerringbro.tif",
+    # >>> YOUR DATA: which way the grid's classes run. REQUIRED when
+    # complexity_grid is set; there is no default. GeoSigma works with
+    # "higher_is_more_complex"; a grid declared "lower_is_more_complex" is
+    # reversed on loading (c -> n + 1 - c) and then also needs
+    # "complexity_n_classes" (e.g. 4). The Danish map stores 5 minus the report's
+    # C-index (C-index 1 = high complexity), so its file values are
+    # higher_is_more_complex.
+    "complexity_order": "higher_is_more_complex",
     # The grid does NOT need to match the model grid: origin shifts (e.g. half a cell),
     # larger extent or other cell size are handled by class_grid_to_model().
     # Class for model cells the complexity map does not cover. 0 = unknown, which
@@ -233,7 +243,9 @@ def load_model(region_config_path):
 # =============================================================================
 # STEP 2 — support grids
 # =============================================================================
-def class_grid_to_model(path, model_meta, name, fill_class=0, nsub=4):
+def class_grid_to_model(
+    path, model_meta, name, fill_class=0, nsub=4, order=None, n_classes=None
+):
     """Load a CLASS grid (complexity, model quality) and put it on the model grid.
 
     Works by coordinates, so it handles any combination of
@@ -248,8 +260,20 @@ def class_grid_to_model(path, model_meta, name, fill_class=0, nsub=4):
     gets the most frequent class among them (a vote). Class 0 / no-data does not
     vote. Ties go to the HIGHER class (= more complex = shorter correlation range =
     more conservative uncertainty). Cells with no valid sample get ``fill_class``.
+
+    ``order`` (a complexity grid only; one of ``COMPLEXITY_ORDERS``) states which
+    way the grid's classes run. The classes are put in GeoSigma's internal order
+    (higher = more complex) straight after reading, before the vote, so the tie
+    rule above always favours the more complex class. ``n_classes`` is needed
+    with ``"lower_is_more_complex"``.
     """
     z, m = load_grid(path)  # north-up, corner-referenced meta
+    if order is not None:
+        # 0 / no-data / negative codes are "unknown" either way (no vote).
+        z = np.asarray(z, dtype=float)
+        z = orient_complexity(
+            np.where(np.isfinite(z) & (z > 0), z, 0.0), order, n_classes
+        )
     z = np.flipud(z)  # south-up like the engine
     mx, my = model_meta, m
 
@@ -312,11 +336,20 @@ def class_grid_to_model(path, model_meta, name, fill_class=0, nsub=4):
 def load_support_grids(conf, terrain, meta):
     complexity = None
     if conf["complexity_grid"]:
+        order = conf.get("complexity_order")
+        if order not in COMPLEXITY_ORDERS:
+            raise ValueError(
+                f"CONFIG['complexity_order'] = {order!r}: set it to one of "
+                f"{list(COMPLEXITY_ORDERS)} to say which way the classes in "
+                f"{conf['complexity_grid']} run (there is no default)."
+            )
         complexity = class_grid_to_model(
             conf["complexity_grid"],
             meta,
             "complexity grid",
             fill_class=conf.get("complexity_fill_class", 0),
+            order=order,
+            n_classes=conf.get("complexity_n_classes"),
         )
 
     if conf["model_class_grid"]:
@@ -634,7 +667,9 @@ attributes:
   doi:                      # depth of investigation of the sounding (m below terrain)
     per_layer: false
     column: doi
-complexity: {complexity}    # path to grid | none | external (= grid from the workflow)
+# complexity: none | external (= the grid from the workflow) |
+#   {{path: <grid>, order: higher_is_more_complex | lower_is_more_complex}}
+complexity: {complexity}
 _notes:
   source: "YOUR DATA - describe the dataset (e.g. GERDA project id, contractor, year)"
   filtering: "YOUR DATA - e.g. removed coupled soundings; de-duplicated on (x, y)"

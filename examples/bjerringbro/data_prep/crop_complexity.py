@@ -10,6 +10,11 @@ did with the national file, so the results are the same.
 Classes 1-4 are kept; 0 (unknown) and blanks become 0, which is also the
 GeoTIFF's nodata value. Both mean "no vote" in ``class_grid_to_model``.
 
+The class order is kept as well. The national file stores 5 minus the report's
+C-index (C-index 1 = high complexity), so in the file and in the excerpt
+1 = low and 4 = high complexity: ``"complexity_order":
+"higher_is_more_complex"`` in the workflow's CONFIG.
+
 The excerpt is redistributed with the permission of the author, Peter B.E.
 Sandersen (GEUS); see the example README, "Data sources and credits".
 
