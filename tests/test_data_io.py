@@ -17,10 +17,13 @@ import pytest
 import yaml
 
 from geosigma.themes import (
+    COMPLEXITY_ORDERS,
     LoadedTheme,
     ThemeData,
     build_theme,
     load_theme_data,
+    orient_complexity,
+    read_complexity_grid,
     resolve_theme_spec,
 )
 
@@ -189,7 +192,10 @@ def test_complexity_path_loads_and_aligns(tmp_path):
 
     grid = tmp_path / "complexity.asc"
     _write_esri_grid(grid, ncols=3, nrows=2, cellsize=100.0, xll=0.0, yll=0.0)
-    man = _write_theme(tmp_path, complexity={"path": "complexity.asc"})
+    man = _write_theme(
+        tmp_path,
+        complexity={"path": "complexity.asc", "order": "higher_is_more_complex"},
+    )
     grid_meta = make_grid_meta(
         ncols=3, nrows=2, dx=100.0, dy=100.0, xllcorner=0.0, yllcorner=0.0
     )
@@ -203,7 +209,10 @@ def test_complexity_path_misaligned_raises(tmp_path):
 
     grid = tmp_path / "complexity.asc"
     _write_esri_grid(grid, ncols=3, nrows=2, cellsize=100.0, xll=0.0, yll=0.0)
-    man = _write_theme(tmp_path, complexity="complexity.asc")
+    man = _write_theme(
+        tmp_path,
+        complexity={"path": "complexity.asc", "order": "higher_is_more_complex"},
+    )
     misaligned = make_grid_meta(
         ncols=3, nrows=2, dx=100.0, dy=100.0, xllcorner=999.0, yllcorner=0.0
     )
@@ -214,9 +223,162 @@ def test_complexity_path_misaligned_raises(tmp_path):
 def test_complexity_path_rejects_supplied_array(tmp_path):
     grid = tmp_path / "complexity.asc"
     _write_esri_grid(grid, ncols=3, nrows=2, cellsize=100.0, xll=0.0, yll=0.0)
-    man = _write_theme(tmp_path, complexity="complexity.asc")
+    man = _write_theme(
+        tmp_path,
+        complexity={"path": "complexity.asc", "order": "higher_is_more_complex"},
+    )
     with pytest.raises(ValueError, match="also supplied"):
         load_theme_data(man, complexity=np.zeros((2, 3)))
+
+
+def _write_esri_rows(path, rows, *, cellsize=100.0):
+    """Write a tiny ESRI ASCII grid with the given rows (north-up)."""
+    rows = np.asarray(rows, dtype=float)
+    lines = [
+        f"ncols {rows.shape[1]}",
+        f"nrows {rows.shape[0]}",
+        "xllcorner 0.0",
+        "yllcorner 0.0",
+        f"cellsize {cellsize}",
+        "NODATA_value -9999",
+    ]
+    lines += [" ".join(str(v) for v in r) for r in rows]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+_ROWS = [[0, 1, 2], [3, 4, 2]]
+
+
+@pytest.mark.parametrize(
+    "decl",
+    [
+        "complexity.asc",
+        {"path": "complexity.asc"},
+        {"path": "complexity.asc", "order": None},
+    ],
+)
+def test_complexity_path_without_order_raises(tmp_path, decl):
+    # A map read from disk must say which way its classes run; no default.
+    _write_esri_rows(tmp_path / "complexity.asc", _ROWS)
+    man = _write_theme(tmp_path, complexity=decl)
+    with pytest.raises(ValueError, match="order"):
+        load_theme_data(man)
+
+
+def test_complexity_path_invalid_order_raises(tmp_path):
+    _write_esri_rows(tmp_path / "complexity.asc", _ROWS)
+    man = _write_theme(
+        tmp_path, complexity={"path": "complexity.asc", "order": "ascending"}
+    )
+    with pytest.raises(ValueError, match="not one of"):
+        load_theme_data(man)
+
+
+def test_complexity_path_unknown_key_raises(tmp_path):
+    _write_esri_rows(tmp_path / "complexity.asc", _ROWS)
+    man = _write_theme(
+        tmp_path,
+        complexity={
+            "path": "complexity.asc",
+            "order": "higher_is_more_complex",
+            "classes": 4,
+        },
+    )
+    with pytest.raises(ValueError, match="unknown complexity key"):
+        load_theme_data(man)
+
+
+def test_higher_is_more_complex_keeps_values(tmp_path):
+    _write_esri_rows(tmp_path / "complexity.asc", _ROWS)
+    man = _write_theme(
+        tmp_path,
+        complexity={"path": "complexity.asc", "order": "higher_is_more_complex"},
+    )
+    comp = load_theme_data(man).data.complexity
+    np.testing.assert_array_equal(comp, np.asarray(_ROWS, dtype=float))
+
+
+def test_lower_is_more_complex_reverses_classes(tmp_path):
+    # 1..4 -> 4..1; the unknown class 0 stays 0.
+    _write_esri_rows(tmp_path / "complexity.asc", _ROWS)
+    man = _write_theme(
+        tmp_path,
+        complexity={
+            "path": "complexity.asc",
+            "order": "lower_is_more_complex",
+            "n_classes": 4,
+        },
+    )
+    comp = load_theme_data(man).data.complexity
+    np.testing.assert_array_equal(comp, [[0.0, 4.0, 3.0], [2.0, 1.0, 3.0]])
+
+
+def test_lower_is_more_complex_uses_n_classes_not_map_max(tmp_path):
+    # A crop holding only classes 2 and 3 of a 4-class map must still map
+    # 2 -> 3 and 3 -> 2 (not be reversed around its own maximum).
+    _write_esri_rows(tmp_path / "complexity.asc", [[2, 3], [3, 2]])
+    man = _write_theme(
+        tmp_path,
+        complexity={
+            "path": "complexity.asc",
+            "order": "lower_is_more_complex",
+            "n_classes": 4,
+        },
+    )
+    comp = load_theme_data(man).data.complexity
+    np.testing.assert_array_equal(comp, [[3.0, 2.0], [2.0, 3.0]])
+
+
+def test_lower_is_more_complex_needs_n_classes(tmp_path):
+    _write_esri_rows(tmp_path / "complexity.asc", _ROWS)
+    man = _write_theme(
+        tmp_path,
+        complexity={"path": "complexity.asc", "order": "lower_is_more_complex"},
+    )
+    with pytest.raises(ValueError, match="n_classes"):
+        load_theme_data(man)
+
+
+def test_lower_is_more_complex_rejects_values_above_n_classes(tmp_path):
+    _write_esri_rows(tmp_path / "complexity.asc", _ROWS)
+    man = _write_theme(
+        tmp_path,
+        complexity={
+            "path": "complexity.asc",
+            "order": "lower_is_more_complex",
+            "n_classes": 3,
+        },
+    )
+    with pytest.raises(ValueError, match="outside 0..3"):
+        load_theme_data(man)
+
+
+def test_read_complexity_grid_requires_order(tmp_path):
+    path = tmp_path / "complexity.asc"
+    _write_esri_rows(path, _ROWS)
+    with pytest.raises(TypeError):
+        read_complexity_grid(path)  # order is keyword-only and required
+    grid, meta = read_complexity_grid(path, order="lower_is_more_complex", n_classes=4)
+    np.testing.assert_array_equal(grid, [[0.0, 4.0, 3.0], [2.0, 1.0, 3.0]])
+    assert meta["ncols"] == 3 and meta["nrows"] == 2
+
+
+def test_orient_complexity_higher_is_identity():
+    a = np.array([[0.0, 1.0], [4.0, 2.5]])
+    out = orient_complexity(a, "higher_is_more_complex")
+    np.testing.assert_array_equal(out, a)
+    assert out.dtype == np.float64
+
+
+def test_orient_complexity_rejects_bad_n_classes():
+    with pytest.raises(ValueError, match="positive integer"):
+        orient_complexity([[1]], "lower_is_more_complex", n_classes=2.5)
+    with pytest.raises(ValueError, match="positive integer"):
+        orient_complexity([[1]], "lower_is_more_complex", n_classes=True)
+
+
+def test_complexity_orders_constant():
+    assert COMPLEXITY_ORDERS == ("higher_is_more_complex", "lower_is_more_complex")
 
 
 # --------------------------------------------------------------------------- #

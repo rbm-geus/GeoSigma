@@ -216,15 +216,20 @@ three declarations below; there is no silent default to "no complexity".
 
 The three valid declarations are:
 
-1. **A grid path** — `complexity: complexity.tif` (or the mapping form
-   `complexity: { path: complexity.tif }`). The grid is loaded from disk,
-   relative to the manifest directory unless absolute. This is the natural choice
-   for a static deposit.
+1. **A grid path with its class order** —
+   `complexity: { path: complexity.tif, order: higher_is_more_complex }`. The
+   grid is loaded from disk, relative to the manifest directory unless absolute.
+   `order` is required and has no default (§4.2); a bare path
+   (`complexity: complexity.tif`) or a mapping without `order` raises. This is
+   the natural choice for a static deposit.
 
 2. **`external`** — the grid is not on disk but is supplied to the loader at load
    time by the calling program (for instance a class grid produced or cropped
    in-process). This is a runtime convenience rather than a deposit form. If the
-   manifest says `external` but no grid is supplied, the load raises.
+   manifest says `external` but no grid is supplied, the load raises. The
+   supplied grid must already be in the internal order (§4.2); a program that
+   reads it from disk declares the order there, through
+   `read_complexity_grid(path, order=...)`.
 
 3. **`none`** (equivalently `uniform`) — the deliberate opt-in to *no* complexity
    grid. The theme's complexity is left undefined and the engine assumes a single
@@ -256,14 +261,38 @@ not part of this check.) If no working-grid metadata is supplied, the grid is
 loaded without an alignment check and alignment becomes the depositor's
 responsibility.
 
-### 4.2 Class semantics
+### 4.2 Class semantics and class order
 
 Complexity values are non-negative integer class codes. The code `0` denotes
 **unknown / undefined** — cells with class 0 carry no range and are masked out of
 the theme there. Positive codes `1…K` select the correlation range through the
-spec's range model. The number of classes and their meaning are a property of the
-spec and the source, not of the format; the Danish configurations use four
-classes (1–4), but any positive coding is admissible.
+spec's range model. The number of classes is a property of the spec and the
+source, not of the format; the Danish configurations use four classes (1–4), but
+any positive coding is admissible.
+
+Inside GeoSigma a **higher class means more complex geology** (`1` = least
+complex, `K` = most complex), and every `range_by_complexity` table is indexed in
+that order. Source maps are not all coded that way, so a grid referenced by path
+must state its order:
+
+| `order` | Meaning | On loading |
+|---------|---------|------------|
+| `higher_is_more_complex` | the file's values already follow the internal order | used unchanged |
+| `lower_is_more_complex` | `1` is the most complex class | reversed: `c → n_classes + 1 − c` for `c = 1…n_classes`; `0` stays `0` |
+
+`lower_is_more_complex` also needs `n_classes`, because the map's own maximum
+cannot be trusted (a crop need not contain the top class):
+
+```yaml
+complexity:
+  path: complexity.tif
+  order: lower_is_more_complex
+  n_classes: 4
+```
+
+A value outside `0…n_classes` then raises. The Danish complexity map (Sandersen
+2021) is stored as `higher_is_more_complex`: its file value is 5 minus the
+report's C-index, which runs from 1 (high complexity) to 4 (low).
 
 ---
 
@@ -343,9 +372,9 @@ following pattern is recommended for near-verbatim reuse:
 ```yaml
 _notes:
   complexity_grid: >
-    complexity.tif — geological-complexity class raster (classes 1–4;
-    0 = unknown/masked), co-registered with the model grid, used only to set the
-    correlation-range regime.
+    complexity.tif — geological-complexity class raster (classes 1–4, higher =
+    more complex; 0 = unknown/masked), co-registered with the model grid, used
+    only to set the correlation-range regime.
     ORIGIN: produced by <originating project / owner> for <that project's
     purpose> and reused here with the originator's agreement. It is included in
     this deposit openly, on the understanding that this entry states its origin

@@ -86,7 +86,14 @@ from .io import (
     write_display_stack,
     write_variance_stack,
 )
-from .data_io import LoadedTheme, load_theme_data, resolve_theme_spec
+from .data_io import (
+    COMPLEXITY_ORDERS,
+    LoadedTheme,
+    load_theme_data,
+    orient_complexity,
+    read_complexity_grid,
+    resolve_theme_spec,
+)
 from . import themes
 
 __all__ = [
@@ -123,5 +130,8 @@ __all__ = [
     "LoadedTheme",
     "load_theme_data",
     "resolve_theme_spec",
+    "COMPLEXITY_ORDERS",
+    "read_complexity_grid",
+    "orient_complexity",
     "themes",
 ]
