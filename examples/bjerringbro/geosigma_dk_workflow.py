@@ -63,6 +63,7 @@ from geosigma.themes import (
 )
 from utils import (
     grid_coordinates_from_esri_meta,
+    grids_aligned,
     load_esri_ascii_grid,
     load_geotiff_grid,
     load_surfer7_grid,
@@ -108,7 +109,10 @@ CONFIG = {
     # theme = the background uncertainty where no data exist. Classes 0-5 with
     # surface std roots 20/20/12.5/12.5/11.25/10 m (the Danish calibration,
     # geosigma.themes.DANISH_CLASS_FMIN, passed explicitly in combine_and_export).
-    # None => one uniform class (MODEL_CLASS_IF_NO_GRID).
+    # None => one uniform class (MODEL_CLASS_IF_NO_GRID). Like the complexity
+    # map, the grid must lie on EXACTLY the model grid, with a class in every
+    # cell; the workflow checks this and stops if not. Put a grid there first
+    # with data_prep/model_class_to_grid.py.
     "model_class_grid": None,  # e.g. "my_site/model_class.tif"
     "model_class_if_no_grid": 2,
     # Danish two-regime split: 0-based index, in the variance stack, of the first
@@ -240,83 +244,28 @@ def load_model(region_config_path):
 # =============================================================================
 # STEP 2 — support grids
 # =============================================================================
-def class_grid_to_model(path, model_meta, name, fill_class=0, nsub=4):
-    """Load a model-quality CLASS grid and put it on the model grid.
+def model_class_grid(path, model_meta):
+    """Read a model-quality class grid that lies on the model grid.
 
-    (The complexity map is not handled here: it must already lie on the model
-    grid, see ``load_support_grids`` and ``data_prep/crop_complexity.py``.)
-
-    Works by coordinates, so it handles any combination of
-      * different origin (e.g. a half-cell shift: 541950 vs 542000 on a 100 m grid),
-      * different extent (larger national map vs. your site),
-      * different cell size.
-    Origins are compared as cell CORNERS: GeoSigma's readers already convert Surfer
-    .grd node coordinates and ESRI 'xllcenter' headers to corners, so a grid whose
-    header *looks* 50 m off may in fact be aligned.
-
-    Each model cell is sampled at nsub x nsub points spread over the cell; the cell
-    gets the most frequent class among them (a vote). Class 0 / no-data does not
-    vote. Ties go to the HIGHER class. Cells with no valid sample get
-    ``fill_class``.
+    The grid is not adapted here: it must have the model grid's origin, cell
+    size and number of cells and a class in every cell, or this raises. Put a
+    grid on the model grid first with ``data_prep/model_class_to_grid.py``.
+    Returns the classes south-up (like the engine) as integers.
     """
-    z, m = load_grid(path)  # north-up, corner-referenced meta
-    z = np.flipud(z)  # south-up like the engine
-    mx, my = model_meta, m
-
-    dx_off = my["xllcorner"] - mx["xllcorner"]
-    dy_off = my["yllcorner"] - mx["yllcorner"]
-    same_cells = abs(my["dx"] - mx["dx"]) < 1e-6 and abs(my["dy"] - mx["dy"]) < 1e-6
-    snapped = (
-        same_cells
-        and abs(dx_off / mx["dx"] - round(dx_off / mx["dx"])) < 1e-6
-        and abs(dy_off / mx["dy"] - round(dy_off / mx["dy"])) < 1e-6
-    )
-    print(
-        f"[2] {name}: {m['ncols']} x {m['nrows']} cells @ {my['dx']:g} m, "
-        f"corner offset vs model: dx={dx_off:+g} m, dy={dy_off:+g} m "
-        "-> "
-        + (
-            "cell edges coincide (crop/pad only)"
-            if snapped
-            else "RESAMPLED by majority vote"
+    z, m = load_grid(path)  # north-up, nodata as NaN
+    if not grids_aligned(m, model_meta):
+        raise ValueError(
+            f"model-class grid {path} is not aligned with the model grid "
+            "(shape/spacing/origin differ). Put it on the model grid first "
+            "(see data_prep/model_class_to_grid.py)."
         )
-    )
-
-    gx, gy, _, _ = grid_coordinates_from_esri_meta(mx)  # model cell centres
-    off = (np.arange(nsub) + 0.5) / nsub - 0.5
-    sx = (gx[:, None] + off[None, :] * mx["dx"]).ravel()  # (nx*nsub,)
-    sy = (gy[:, None] + off[None, :] * mx["dy"]).ravel()  # (ny*nsub,)
-    ix = np.floor((sx - my["xllcorner"]) / my["dx"]).astype(int)
-    iy = np.floor((sy - my["yllcorner"]) / my["dy"]).astype(int)
-    okx = (ix >= 0) & (ix < z.shape[1])
-    oky = (iy >= 0) & (iy < z.shape[0])
-
-    samples = np.full((iy.size, ix.size), np.nan)
-    samples[np.ix_(oky, okx)] = z[np.ix_(iy[oky], ix[okx])]
-    samples[~np.isfinite(samples) | (samples <= 0)] = np.nan  # 0 = unknown: no vote
-    ny, nx = gy.size, gx.size
-    samples = (
-        samples.reshape(ny, nsub, nx, nsub).transpose(0, 2, 1, 3).reshape(ny, nx, -1)
-    )
-
-    out = np.full((ny, nx), int(fill_class), dtype=int)
-    best = np.zeros((ny, nx), dtype=int)
-    classes = np.unique(samples[np.isfinite(samples)]).astype(int)
-    for c in classes:  # ascending: ties -> higher class
-        cnt = np.sum(samples == c, axis=-1)
-        win = (cnt > 0) & (cnt >= best)
-        out[win], best[win] = c, cnt[win]
-
-    n_cells = ny * nx
-    ambiguous = np.sum((best > 0) & (best < samples.shape[-1]))
-    missing = np.sum(best == 0)
-    print(
-        f"    classes {classes.tolist()}; {ambiguous / n_cells:.0%} of model cells "
-        "straddle "
-        f"several {name} cells; {missing / n_cells:.0%} outside/no-data -> class "
-        f"{fill_class}"
-    )
-    return out
+    if not np.all(np.isfinite(z)):
+        raise ValueError(
+            f"model-class grid {path} has cells without a class (nodata); give "
+            "every model cell a class (data_prep/model_class_to_grid.py "
+            "--fill-class)."
+        )
+    return np.rint(np.flipud(z)).astype(int)
 
 
 def load_support_grids(conf, terrain, meta):
@@ -349,12 +298,7 @@ def load_support_grids(conf, terrain, meta):
         )
 
     if conf["model_class_grid"]:
-        model_class = class_grid_to_model(
-            conf["model_class_grid"],
-            meta,
-            "model-class grid",
-            fill_class=conf["model_class_if_no_grid"],
-        )
+        model_class = model_class_grid(conf["model_class_grid"], meta)
     else:
         model_class = np.full(terrain.shape, conf["model_class_if_no_grid"], dtype=int)
 

@@ -226,3 +226,95 @@ def test_gerda_converter_requires_an_order_for_a_grid_path():
         decl("c.tif", "lower_is_more_complex")
     with pytest.raises(ValueError, match="only apply"):
         decl("none", "higher_is_more_complex")
+
+
+# --------------------------------------------------------------------------- #
+# Model-class grid: supplied on the model grid, no vote at run time
+# --------------------------------------------------------------------------- #
+def _write_tif(path, z, meta, x_shift=0.0, nodata=None):
+    import rasterio
+    from rasterio.transform import from_origin
+
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=z.shape[0],
+        width=z.shape[1],
+        count=1,
+        dtype="float32",
+        crs="EPSG:25832",
+        transform=from_origin(
+            meta["xllcorner"] + x_shift,
+            meta["yllcorner"] + z.shape[0] * meta["dy"],
+            meta["dx"],
+            meta["dy"],
+        ),
+        nodata=nodata,
+    ) as ds:
+        ds.write(z.astype("float32"), 1)
+
+
+def _model():
+    wf = _workflow()
+    conf = wf.resolve_paths(wf.CONFIG)
+    cfg, meta, _, _, terrain, _ = wf.load_model(conf["region_config"])
+    return wf, conf, meta, terrain
+
+
+def test_model_class_grid_on_the_model_grid_is_read_as_is(tmp_path):
+    wf, conf, meta, terrain = _model()
+    z = np.random.default_rng(1).integers(0, 6, size=terrain.shape)  # north-up
+    path = tmp_path / "mc.tif"
+    _write_tif(path, z, meta)
+    conf["model_class_grid"] = str(path)
+    _, model_class = wf.load_support_grids(conf, terrain, meta)
+    np.testing.assert_array_equal(model_class, np.flipud(z))
+
+
+def test_model_class_grid_off_the_model_grid_raises(tmp_path):
+    wf, conf, meta, terrain = _model()
+    path = tmp_path / "mc.tif"
+    _write_tif(path, np.full(terrain.shape, 3), meta, x_shift=50.0)
+    conf["model_class_grid"] = str(path)
+    with pytest.raises(ValueError, match="not aligned.*model_class_to_grid"):
+        wf.load_support_grids(conf, terrain, meta)
+
+
+def test_model_class_grid_with_nodata_raises(tmp_path):
+    wf, conf, meta, terrain = _model()
+    z = np.full(terrain.shape, 3.0)
+    z[0, 0] = -9999.0
+    path = tmp_path / "mc.tif"
+    _write_tif(path, z, meta, nodata=-9999.0)
+    conf["model_class_grid"] = str(path)
+    with pytest.raises(ValueError, match="without a class"):
+        wf.load_support_grids(conf, terrain, meta)
+
+
+def _model_class_module():
+    spec = importlib.util.spec_from_file_location(
+        "model_class_to_grid", EXAMPLE / "data_prep" / "model_class_to_grid.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_model_class_prep_vote_ties_go_to_the_lower_class():
+    # Lower model class = larger background uncertainty = more conservative.
+    mod = _model_class_module()
+    model = _meta(0.0, 0.0, 2, 2, 100.0)
+    fine = _meta(0.0, 0.0, 4, 4, 50.0)
+    out, how = mod.to_model_grid(np.tile([2.0, 4.0, 2.0, 4.0], (4, 1)), fine, model)
+    np.testing.assert_array_equal(out, np.full((2, 2), 2))
+    assert "lower" in how
+
+
+def test_model_class_prep_keeps_class_0_and_fills_gaps():
+    # Class 0 is a real model class; only NaN (nodata) is filled.
+    mod = _model_class_module()
+    model = _meta(0.0, 0.0, 3, 1, 100.0)
+    src = _meta(0.0, 0.0, 2, 1, 100.0)
+    out, _ = mod.to_model_grid(np.array([[0.0, np.nan]]), src, model, fill_class=2)
+    np.testing.assert_array_equal(out, [[0, 2, 2]])

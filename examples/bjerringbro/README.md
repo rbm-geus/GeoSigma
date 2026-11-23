@@ -84,7 +84,9 @@ examples/bjerringbro/
 │   ├── gerda_db.py               reads GERDA exports (Access .mdb or Firebird .fdb)
 │   ├── gerda_to_themedata.py     GERDA models -> ThemeData bundle
 │   ├── wells_to_csv.py           Jupiter (+ interpretation points) -> wells.csv
-│   └── crop_complexity.py        national complexity map -> model grid
+│   ├── crop_complexity.py        national complexity map -> model grid
+│   ├── model_class_to_grid.py    a model-quality class grid -> model grid
+│   └── class_grids.py            shared shift / majority-vote helpers
 
 ```
 
@@ -129,7 +131,11 @@ Each manifest's `_notes` records the source file and how many soundings were kep
   `data_prep/crop_complexity.py`; see "Geological complexity map" below and
   `docs/theme_format.md`.
 - **The model-quality class is uniform** (class 2 everywhere), because no
-  model-class grid was supplied.
+  model-class grid was supplied. A grid you add must lie on the model grid with
+  a class in every cell, like the complexity map; the workflow checks this and
+  stops otherwise. `data_prep/model_class_to_grid.py` puts a grid there (a
+  shift for the same cell size, otherwise a majority vote in which the lower,
+  more uncertain class wins ties).
 - **Coverage is sparse.** Each geophysical method informs at most about 5 % of
   the cells per layer, so most of the area carries the model theme's background
   uncertainty (median std 6–28 m, increasing with depth).
