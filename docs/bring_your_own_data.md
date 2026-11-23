@@ -141,6 +141,16 @@ regime. Complexity classes come from an optional class grid (see the complexity
 contract in [`theme_format.md`](theme_format.md)); with no grid the engine assumes
 uniform class 1 (the least complex).
 
+**The map must lie on the model grid.** Supply a complexity map with the same
+origin, cell size and number of cells as your model grid. GeoSigma does not
+resample, shift, crop or pad it; it checks the alignment and stops with an error
+if the map does not fit. Putting your map on the model grid is your preparation
+step, done once: crop a larger map, shift it if its cell edges are offset by
+part of a cell, or vote a finer or coarser map onto the model cells. The
+Bjerringbro example's `data_prep/crop_complexity.py` shows both cases (a
+half-cell shift as in the MATLAB code, and a majority vote where the most
+complex class wins ties).
+
 **Class order.** Inside GeoSigma a higher class is always more complex, and the
 table is indexed that way. Your map may be coded the other way round, so whenever
 you supply one from disk you must say which way it runs; there is no default. In
