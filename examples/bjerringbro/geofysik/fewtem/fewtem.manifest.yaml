@@ -16,7 +16,7 @@ attributes:
   doi:
     per_layer: false
     column: doi
-complexity: none
+complexity: external
 _notes:
   source: "GERDA export bjerringbro_geofysik.fdb"
   filtering: "inside model grid; de-duplicated on (x, y) keeping last; 144 -> 128 soundings"

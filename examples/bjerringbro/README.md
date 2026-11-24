@@ -99,11 +99,11 @@ not included because of its size). Each bundle was made with commands like these
 ```bash
 python data_prep/gerda_to_themedata.py --list --gerda bjerringbro_geofysik.fdb --region-config region_config.json
 python data_prep/gerda_to_themedata.py --gerda bjerringbro_geofysik.fdb --region-config region_config.json \
-    --datatype tem --subtype skytem --spec skytem --name skytem --out geofysik/skytem
+    --datatype tem --subtype skytem --spec skytem --name skytem --complexity external --out geofysik/skytem
 python data_prep/gerda_to_themedata.py --gerda bjerringbro_geofysik.fdb --region-config region_config.json \
-    --datatype tem --spec fewtem --name fewtem --out geofysik/fewtem
+    --datatype tem --spec fewtem --name fewtem --complexity external --out geofysik/fewtem
 python data_prep/gerda_to_themedata.py --gerda bjerringbro_geofysik.fdb --region-config region_config.json \
-    --datatype paces --spec paces --name paces --out geofysik/paces
+    --datatype paces --spec paces --name paces --complexity external --out geofysik/paces
 ```
 
 The well input was made from the Jupiter extract:
@@ -258,11 +258,13 @@ step, done once by `data_prep/crop_complexity.py`:
   4 × 4 sample points (a majority vote); a tie goes to the most complex class,
   which gives the shorter range and so the more conservative uncertainty.
 
-Before this, the workflow did a majority vote itself at every run. The
-shifted copy gives a different class in 216 of the 10 000 model cells (186
-from 3 to 2, 30 from 2 to 3). The final variance maps are unchanged, because
-the geophysics manifests use `complexity: none` and no borehole lies in a
-changed cell.
+The geophysics manifests declare `complexity: external`: the workflow reads
+the map once and hands it to every theme. The Danish specs then use the
+complexity-graded ranges (500/400/250/100 m for classes 1–4) on the Quaternary
+boundaries (stack layers 0–9) and a flat 500 m from `n_prereq = 10` on. The
+borehole theme follows the same split (`danish_well_range_model`): a well's
+range comes from the class at the well on the Quaternary boundaries and is
+500 m on the pre-Quaternary ones.
 It is a provisional proxy; see the limitations above and `docs/theme_format.md`.
 
 The map divides onshore Denmark into four classes of expected geological

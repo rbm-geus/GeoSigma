@@ -341,3 +341,37 @@ def test_pre_quaternary_wells_do_not_depend_on_the_complexity_map():
     np.testing.assert_array_equal(real[:, :, n_prereq:], other[:, :, n_prereq:])
     # Quaternary layers do use it (wells there sit in classes 2 and 3).
     assert not np.array_equal(real[:, :, :n_prereq], other[:, :, :n_prereq])
+
+
+# --------------------------------------------------------------------------- #
+# Geophysics themes use the complexity map on the Quaternary layers only
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("theme", ["skytem", "fewtem", "paces"])
+def test_manifests_take_the_complexity_map_from_the_workflow(theme):
+    man = EXAMPLE / "geofysik" / theme / f"{theme}.manifest.yaml"
+    import yaml
+
+    assert yaml.safe_load(man.read_text(encoding="utf-8"))["complexity"] == "external"
+
+
+def test_complexity_map_changes_the_quaternary_layers_only():
+    # With the real map the Quaternary boundaries (stack layers < n_prereq) get
+    # the graded ranges; the pre-Quaternary ones keep a flat 500 m, so they
+    # match a run on a uniform class-1 (500 m) map exactly.
+    from geosigma.themes import build_theme, load_theme_data
+
+    wf, conf, meta, terrain = _model()
+    cfg, _, gx, gy, _, _ = wf.load_model(conf["region_config"])
+    n, n_prereq = cfg.n_modelled_layers, conf["n_prereq"]
+    comp, _ = wf.load_support_grids(conf, terrain, meta)
+    man = EXAMPLE / "geofysik" / "skytem" / "skytem.manifest.yaml"
+    spec = resolve_theme_spec("skytem", n_prereq)
+
+    def build(c):
+        loaded = load_theme_data(man, complexity=c)
+        return build_theme(loaded.data, spec, gx, gy, n)
+
+    real = build(comp)
+    uniform = build(np.ones_like(comp))
+    np.testing.assert_array_equal(real[:, :, n_prereq:], uniform[:, :, n_prereq:])
+    assert not np.array_equal(real[:, :, :n_prereq], uniform[:, :, :n_prereq])
