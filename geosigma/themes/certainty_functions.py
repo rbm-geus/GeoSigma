@@ -18,9 +18,16 @@ Each kernel has the signature ``cert_fun(dist, range_, width, sill)``:
 * ``sill``   certainty at the plateau (``1 / var0``).
 
 All arguments broadcast as numpy arrays, so a kernel evaluates a whole grid
-stack at once. The formulae are ported verbatim from the MATLAB
-``certainty_function_definer.m`` / the root ``certainty_function_definer.py``;
-the statistical model is preserved exactly.
+stack at once.
+
+``kernel_with_point_tail`` is GeoSigma's recommended kernel and the one the
+Danish theme specs use. ``FRAFA_apr2023`` and ``ILM_oct2023`` are ported
+verbatim from the MATLAB ``certainty_function_definer.m``. Two further MATLAB
+kernels are **legacy**: ``ILM_sep2023`` (a sign error) and ``RBM_oct2023`` (a
+jump at the kernel edge). They are kept only so the MATLAB grids can be
+reproduced, and :func:`certainty_function` refuses them unless
+``allow_legacy=True`` (on a spec: ``allow_legacy_cert_fun=True``). See
+``docs/deviations_from_matlab.md``.
 """
 
 from __future__ import annotations
@@ -43,7 +50,15 @@ def _frafa_apr2023(dist, range_, width, sill):
 
 
 def _ilm_sep2023(dist, range_, width, sill):
-    """Gaussian decay from the plateau edge inside ``width``; zero outside.
+    """**Legacy.** Gaussian decay from the plateau edge inside ``width``; zero
+    outside.
+
+    The MATLAB formula has a sign error: inside the plateau ``dist - width`` is
+    zero or negative, so the decay runs from the plateau edge inwards. The
+    certainty is lowest at the data point (``sill * exp(-3 width^2 / range^2)``)
+    and rises to ``sill`` at the edge, where it drops to zero. ``ILM_oct2023``
+    is the MATLAB correction. Kept only to reproduce MATLAB runs; requires
+    ``allow_legacy=True``.
 
     Transcribed as the MATLAB *multiplicative* form
     ``(dist<=width).*sill.*exp(...)`` (``certainty_function_definer.m``), **not**
@@ -69,7 +84,21 @@ def _ilm_oct2023(dist, range_, width, sill):
 
 
 def _rbm_oct2023(dist, range_, width, sill):
-    """Continuous two-piece Gaussian: damped decay inside, matched decay outside."""
+    """**Legacy.** Two-piece Gaussian with a jump at the plateau edge.
+
+    Inside ``width``: ``sill * exp(-1.5 d^2 / range^2)``. Outside:
+    ``sill_adj * exp(-3 d^2 / range^2)`` with
+    ``sill_adj = sill + (sill - inside(width))``. The adjustment adds the
+    missing certainty as if the tail started at full height at the edge, but
+    the tail is centred on the data point and is already damped by
+    ``exp(-3 width^2 / range^2)`` there. With
+    ``a = exp(-1.5 width^2 / range^2)`` the value drops from ``a * sill`` to
+    ``(2 - a) a^2 * sill`` across the edge, a jump of ``a (1 - a)^2 * sill``
+    (at most 4/27 of the sill, at ``width / range`` = 0.86). Ported verbatim
+    from MATLAB and kept only to reproduce MATLAB runs; requires
+    ``allow_legacy=True``. Use ``kernel_with_point_tail``, which is identical
+    inside ``width`` and continuous at the edge.
+    """
 
     def _inside(d, r, w, s, damp):
         return s * np.exp(-damp * d**2 / r**2)
@@ -85,40 +114,99 @@ def _rbm_oct2023(dist, range_, width, sill):
     )
 
 
+def _kernel_with_point_tail(dist, range_, width, sill):
+    """Sensitivity kernel with a Gaussian tail centred on the data point.
+
+    GeoSigma's recommended certainty function. A sounding is 1D information at
+    its x, y location, like a borehole. Inside the sensitivity kernel
+    (``dist <= width``) the certainty decays gently from the data point.
+    Outside it, the certainty follows a Gaussian decay that is also centred on
+    the data point and starts from the kernel's value at the edge::
+
+        dist <= width:  sill * exp(-1.5 dist^2 / range^2)
+        dist >  width:  sill * exp(-1.5 width^2 / range^2)
+                             * exp(-3 (dist^2 - width^2) / range^2)
+
+    The value is ``sill`` at the data point, decreases everywhere and is
+    continuous at the edge. The slope changes there: at ``dist = width`` the
+    tail decays twice as fast as the kernel. Inside ``width`` the function is
+    identical to the legacy ``RBM_oct2023``; outside, it removes that kernel's
+    jump.
+    """
+    inside = sill * np.exp(-1.5 * dist**2 / range_**2)
+    edge = sill * np.exp(-1.5 * width**2 / range_**2)
+    outside = edge * np.exp(-3.0 * (dist**2 - width**2) / range_**2)
+    return np.where(dist <= width, inside, outside)
+
+
 #: Registry of named certainty kernels.
 _CERT_FUNCTIONS = {
+    "kernel_with_point_tail": _kernel_with_point_tail,
     "FRAFA_apr2023": _frafa_apr2023,
     "ILM_sep2023": _ilm_sep2023,
     "ILM_oct2023": _ilm_oct2023,
     "RBM_oct2023": _rbm_oct2023,
 }
 
+#: Legacy MATLAB kernels (name -> why it is legacy). Kept only to reproduce the
+#: MATLAB grids; :func:`certainty_function` refuses them unless asked.
+LEGACY_CERTAINTY_FUNCTIONS = {
+    "ILM_sep2023": (
+        "it has a sign error, so the certainty rises with distance inside the "
+        "plateau"
+    ),
+    "RBM_oct2023": "its value jumps at the plateau edge",
+}
 
-def certainty_function(name: str = "FRAFA_apr2023"):
+_LEGACY_HINT = (
+    "Use 'kernel_with_point_tail' (recommended) or 'ILM_oct2023'. To reproduce "
+    "a MATLAB run, pass allow_legacy=True (on a ThemeSpec: "
+    "allow_legacy_cert_fun=True; in YAML: allow_legacy_cert_fun: true). See "
+    "docs/deviations_from_matlab.md."
+)
+
+
+def check_legacy_certainty_function(name: str, allow_legacy: bool = False) -> None:
+    """Raise ``ValueError`` if ``name`` is a legacy kernel and ``allow_legacy``
+    is False."""
+    if name in LEGACY_CERTAINTY_FUNCTIONS and not allow_legacy:
+        raise ValueError(
+            f"certainty function {name!r} is a legacy MATLAB kernel: "
+            f"{LEGACY_CERTAINTY_FUNCTIONS[name]}. {_LEGACY_HINT}"
+        )
+
+
+def certainty_function(name: str = "FRAFA_apr2023", *, allow_legacy: bool = False):
     """Return the named certainty kernel ``cert_fun(dist, range_, width, sill)``.
 
     Parameters
     ----------
     name : str
-        One of :data:`available_certainty_functions`. Identified by a
-        ``name_MONYYYY`` key, matching the MATLAB convention.
+        One of :data:`available_certainty_functions`.
+    allow_legacy : bool, default False
+        Allow a kernel listed in :data:`LEGACY_CERTAINTY_FUNCTIONS`. Only for
+        reproducing MATLAB runs.
 
     Raises
     ------
     ValueError
-        If ``name`` is not a registered kernel.
+        If ``name`` is not a registered kernel, or is a legacy kernel and
+        ``allow_legacy`` is False.
     """
     try:
-        return _CERT_FUNCTIONS[name]
+        fn = _CERT_FUNCTIONS[name]
     except KeyError:
         raise ValueError(
             f"Unknown certainty function choice: {name!r}. "
             f"Available: {sorted(_CERT_FUNCTIONS)}"
         )
+    check_legacy_certainty_function(name, allow_legacy)
+    return fn
 
 
 def available_certainty_functions():
-    """Return the sorted names of all registered certainty kernels."""
+    """Return the sorted names of all registered certainty kernels, the legacy
+    ones included (see :data:`LEGACY_CERTAINTY_FUNCTIONS`)."""
     return sorted(_CERT_FUNCTIONS)
 
 
@@ -129,7 +217,7 @@ def register_certainty_function(
     by string from a :class:`~geosigma.themes.base.ThemeSpec`.
 
     This is the supported extension point for users whose decay assumptions differ
-    from the four built-in Danish presets (a different data type or geological
+    from the built-in presets (a different data type or geological
     setting). Register the kernel once at start-up, then set
     ``cert_fun_name=name`` on the spec exactly as for a built-in.
 

@@ -5,7 +5,7 @@
 # setting has NO complexity/range regime change.
 name: droneTEM
 search_radius: 4
-cert_fun: ILM_sep2023
+cert_fun: kernel_with_point_tail
 combine: nearest
 
 attributes:

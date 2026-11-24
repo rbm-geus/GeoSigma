@@ -46,7 +46,7 @@ _PACES_19 = {
 _SINGLE = {
     "name": "single",
     "search_radius": 4,
-    "cert_fun": "ILM_sep2023",
+    "cert_fun": "kernel_with_point_tail",
     "attributes": {"depth": "mean", "thick": "min", "doi": "mean"},
     "range_model": [
         {"layers": "all", "range_by_complexity": [50, 300, 250, 150, 80]},
@@ -167,6 +167,30 @@ def test_yaml_paces_matches_danish_helper():
 def test_load_spec_rejects_unknown_cert_fun():
     with pytest.raises(ValueError, match="cert_fun"):
         load_spec(dict(_PACES_19, cert_fun="not_a_kernel"))
+
+
+@pytest.mark.parametrize("legacy", ["ILM_sep2023", "RBM_oct2023"])
+def test_load_spec_rejects_legacy_cert_fun_without_flag(legacy):
+    with pytest.raises(ValueError, match="legacy MATLAB kernel"):
+        load_spec(dict(_SINGLE, cert_fun=legacy))
+
+
+@pytest.mark.parametrize("legacy", ["ILM_sep2023", "RBM_oct2023"])
+def test_load_spec_accepts_legacy_cert_fun_with_flag_and_round_trips(legacy):
+    spec = load_spec(dict(_SINGLE, cert_fun=legacy, allow_legacy_cert_fun=True))
+    assert spec.cert_fun_name == legacy and spec.allow_legacy_cert_fun
+    back = dump_spec(spec)
+    assert back["allow_legacy_cert_fun"] is True
+    assert load_spec(back).allow_legacy_cert_fun
+
+
+def test_load_spec_rejects_non_bool_legacy_flag():
+    with pytest.raises(ValueError, match="allow_legacy_cert_fun"):
+        load_spec(dict(_SINGLE, cert_fun="ILM_sep2023", allow_legacy_cert_fun="yes"))
+
+
+def test_dump_spec_omits_legacy_flag_when_false():
+    assert "allow_legacy_cert_fun" not in dump_spec(load_spec(_SINGLE))
 
 
 def test_load_spec_rejects_missing_key():

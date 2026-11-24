@@ -21,6 +21,14 @@ The DOI ("depth of investigation") values are supplied by the adapter already
 resolved: PACES overwrites DOI to a constant 18 m, and the TEM themes estimate
 missing DOI from region-specific Palaeogene marker layers — that estimation is
 data preparation and belongs in the adapter, not in these model-agnostic specs.
+
+**Certainty kernel.** One part is deliberately *not* transcribed: the national
+MATLAB run used the legacy kernel ``ILM_sep2023`` for PACEP, MEP, SkyTEM,
+fewTEM, manyTEM, tTEM and the gamma and resistivity logs. These specs use
+``kernel_with_point_tail`` instead (see
+:mod:`geosigma.themes.certainty_functions`). To reproduce the MATLAB grids, set
+``cert_fun_name="ILM_sep2023"`` and ``allow_legacy_cert_fun=True`` on the spec
+(``dataclasses.replace``). PACES and REFSEIS keep ``FRAFA_apr2023``.
 """
 
 from __future__ import annotations
@@ -106,13 +114,15 @@ def paces_spec(n_prereq: int) -> ThemeSpec:
     )
 
 
-def pacep_spec(n_prereq: int, cert_fun_name: str = "ILM_sep2023") -> ThemeSpec:
+def pacep_spec(
+    n_prereq: int, cert_fun_name: str = "kernel_with_point_tail"
+) -> ThemeSpec:
     """PACEP theme (search radius 1 cell; plateau half-width 75).
 
     Like PACES, ``get_PACEP_theme.m`` takes the run's ``cert_fun_choice``
-    (defaulting to ``FRAFA_apr2023``); the Jylland reference run used
-    ``ILM_sep2023`` (the same global choice that SkyTEM/fewTEM/manyTEM validated
-    under). ``var0 = (0.5*max(5, 0.5*depth))^2`` and missing DOI is filled
+    (defaulting to ``FRAFA_apr2023``); the Jylland reference run used the legacy
+    ``ILM_sep2023``. The default here is ``kernel_with_point_tail`` (see the
+    module docstring). ``var0 = (0.5*max(5, 0.5*depth))^2`` and missing DOI is filled
     **per-cell after reduction** with a constant 15 (see ``post_reduce_fn``),
     then cells whose boundary lies below the DOI are masked.
     """
@@ -137,7 +147,7 @@ def _pacep_post_reduce(a):
 
 
 def mep_spec(
-    n_prereq: int, doi_fill: float, cert_fun_name: str = "ILM_sep2023"
+    n_prereq: int, doi_fill: float, cert_fun_name: str = "kernel_with_point_tail"
 ) -> ThemeSpec:
     """MEP (multi-electrode profiling) theme (search radius 2; plateau width 75).
 
@@ -154,7 +164,8 @@ def mep_spec(
       the adapter computes from the (filtered) point set and passes in.
 
     Like PACES/PACEP, the MATLAB default ``cert_fun_choice`` is ``FRAFA_apr2023``
-    but the Jylland reference run used ``ILM_sep2023``.
+    but the Jylland reference run used the legacy ``ILM_sep2023``. The default
+    here is ``kernel_with_point_tail`` (see the module docstring).
     """
     return ThemeSpec(
         name="MEP",
@@ -191,13 +202,13 @@ def _make_mep_post_reduce(doi_fill):
 
 
 def gammalog_spec(n_prereq: int) -> ThemeSpec:
-    """Gamma-log theme (search radius 6; ILM Gaussian kernel; min thickness)."""
+    """Gamma-log theme (search radius 6; min thickness)."""
     return ThemeSpec(
         name="GAMMALOG",
         search_radius=6,
         # no pre-Q override (MATLAB no-op): both regimes share the graded table.
         range_model=_two_regime(n_prereq, _COMP2RANGE, _COMP2RANGE_PREQ_LOG),
-        cert_fun_name="ILM_sep2023",
+        cert_fun_name="kernel_with_point_tail",
         attributes=("depth", "thick"),
         reducers={"depth": "mean", "thick": "min"},
         var0_fn=_gammalog_var0,
@@ -214,13 +225,13 @@ def _gammalog_var0(a):
 
 
 def reslog_spec(n_prereq: int) -> ThemeSpec:
-    """Resistivity-log theme (search radius 6; ILM Gaussian kernel; min thickness)."""
+    """Resistivity-log theme (search radius 6; min thickness)."""
     return ThemeSpec(
         name="RESLOG",
         search_radius=6,
         # no pre-Q override (MATLAB no-op): both regimes share the graded table.
         range_model=_two_regime(n_prereq, _COMP2RANGE, _COMP2RANGE_PREQ_LOG),
-        cert_fun_name="ILM_sep2023",
+        cert_fun_name="kernel_with_point_tail",
         attributes=("depth", "thick"),
         reducers={"depth": "mean", "thick": "min"},
         var0_fn=_reslog_var0,
@@ -258,14 +269,18 @@ def refseis_spec(n_prereq: int, active_layers) -> ThemeSpec:
     )
 
 
-def skytem_spec(n_prereq: int, cert_fun_name: str = "ILM_sep2023") -> ThemeSpec:
+def skytem_spec(
+    n_prereq: int, cert_fun_name: str = "kernel_with_point_tail"
+) -> ThemeSpec:
     """Airborne TEM (SkyTEM) theme (search radius 6).
 
     Unlike fewTEM/manyTEM/REFSEIS (which hardcode their kernel), the MATLAB
     ``get_SkyTEM_theme.m`` takes the run's ``cert_fun_choice`` (defaulting to
-    ``FRAFA_apr2023``); the Jylland reference run used ``ILM_sep2023``. ``var0`` is
-    driven by the **minimum** model thickness over the nearest-point ties (not the
-    mean), and the plateau half-width is ``max(2*depth, 75)``.
+    ``FRAFA_apr2023``); the Jylland reference run used the legacy
+    ``ILM_sep2023``, and the default here is ``kernel_with_point_tail`` (see the
+    module docstring). ``var0`` is driven by the **minimum** model thickness over
+    the nearest-point ties (not the mean), and the plateau half-width is
+    ``max(2*depth, 75)``.
     """
     return ThemeSpec(
         name="SkyTEM",
@@ -288,12 +303,12 @@ def _skytem_var0(a):
 
 
 def fewtem_spec(n_prereq: int) -> ThemeSpec:
-    """Few-layer TEM theme (search radius 6; ILM Gaussian kernel)."""
+    """Few-layer TEM theme (search radius 6)."""
     return ThemeSpec(
         name="fewTEM",
         search_radius=6,
         range_model=_two_regime(n_prereq, _COMP2RANGE, _COMP2RANGE_PREQ),
-        cert_fun_name="ILM_sep2023",
+        cert_fun_name="kernel_with_point_tail",
         attributes=("depth", "doi"),
         reducers={"depth": "mean", "doi": "mean"},
         var0_fn=_fewtem_var0,
@@ -310,12 +325,12 @@ def _fewtem_var0(a):
 
 
 def manytem_spec(n_prereq: int) -> ThemeSpec:
-    """Many-layer TEM theme (search radius 6; ILM Gaussian kernel)."""
+    """Many-layer TEM theme (search radius 6)."""
     return ThemeSpec(
         name="manyTEM",
         search_radius=6,
         range_model=_two_regime(n_prereq, _COMP2RANGE, _COMP2RANGE_PREQ),
-        cert_fun_name="ILM_sep2023",
+        cert_fun_name="kernel_with_point_tail",
         attributes=("depth", "thick", "doi"),
         reducers={"depth": "mean", "thick": "mean", "doi": "mean"},
         var0_fn=_manytem_var0,
@@ -332,12 +347,12 @@ def _manytem_var0(a):
 
 
 def ttem_spec(n_prereq: int) -> ThemeSpec:
-    """Towed TEM (tTEM) theme (search radius 6; ILM Gaussian kernel)."""
+    """Towed TEM (tTEM) theme (search radius 6)."""
     return ThemeSpec(
         name="tTEM",
         search_radius=6,
         range_model=_two_regime(n_prereq, _COMP2RANGE_TTEM, _COMP2RANGE_PREQ_TTEM),
-        cert_fun_name="ILM_sep2023",
+        cert_fun_name="kernel_with_point_tail",
         attributes=("depth", "thick", "doi"),
         reducers={"depth": "mean", "thick": "mean", "doi": "mean"},
         var0_fn=_ttem_var0,

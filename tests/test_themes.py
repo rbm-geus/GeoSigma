@@ -20,6 +20,8 @@ Deterministic stages also get a golden ``.npz`` regression guard.
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -76,7 +78,7 @@ def test_frafa_plateau_then_gaussian():
 
 
 def test_ilm_sep_zero_outside_width():
-    f = certainty_function("ILM_sep2023")
+    f = certainty_function("ILM_sep2023", allow_legacy=True)
     out = f(np.array([3.0, 10.0]), 8.0, 5.0, 1.5)
     assert out[0] == pytest.approx(1.5 * np.exp(-3.0 * (3.0 - 5.0) ** 2 / 8.0**2))
     assert out[1] == 0.0  # beyond width
@@ -466,9 +468,12 @@ def test_build_theme_identical_under_both_windowings(spec_factory):
     np.testing.assert_allclose(fast, ref, rtol=0, atol=0, equal_nan=True)
 
 
-def test_build_theme_basic_invariants():
+@pytest.mark.parametrize("cert_fun", ["ILM_oct2023", "kernel_with_point_tail"])
+def test_build_theme_basic_invariants(cert_fun):
     grid_x, grid_y, xs, ys, attributes, _, complexity, n_layers = _synthetic_case()
-    spec = theme_specs.gammalog_spec(n_prereq=2)
+    spec = dataclasses.replace(
+        theme_specs.gammalog_spec(n_prereq=2), cert_fun_name=cert_fun
+    )
     data = ThemeData(xs=xs, ys=ys, attributes=attributes, complexity=complexity)
     grid = build_theme(data, spec, grid_x, grid_y, n_layers)
     # Variance is strictly positive everywhere and never NaN (NaN -> sentinel).
@@ -477,8 +482,10 @@ def test_build_theme_basic_invariants():
     # +inf is a *valid* outcome (a location with KNOWN complexity exists but
     # beyond the certainty kernel's reach => zero certainty => infinite variance).
     # The MATLAB leaves it as Inf, and combine() turns it into zero precision. So
-    # we assert "no NaN", not "all finite".
-    assert np.isinf(grid).any()
+    # we assert "no NaN", not "all finite". Only a kernel that is exactly zero
+    # outside its width (ILM_oct2023) produces it; kernel_with_point_tail has a
+    # Gaussian tail that stays positive inside the search window.
+    assert np.isinf(grid).any() == (cert_fun == "ILM_oct2023")
     # Cells of unknown complexity (class 0) carry no usable information. With the
     # multiplicative MATLAB kernel the NaN range poisons BOTH branches: a location
     # within width gives NaN*... = NaN, and one beyond width gives 0*NaN = NaN

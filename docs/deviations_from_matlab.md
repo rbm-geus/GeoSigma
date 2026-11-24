@@ -7,7 +7,7 @@ the library relate to that code differently:
 - **The variance-map tool (v0.1.0, `geosigma.themes`)** reproduces the MATLAB
   output. The built-in themes are validated cell by cell against MATLAB
   reference grids (see *Validation status* in the [README](../README.md)).
-  Two errors in the MATLAB themes are deliberately not reproduced; they are
+  Errors in the MATLAB themes are not reproduced by default; they are
   listed under *MATLAB errors not reproduced* below.
 - **The simulation (v1.0.0: `geosigma.preprocess`, `geosigma.kriging`,
   `geosigma.assembly`)** implements the method published in
@@ -36,6 +36,7 @@ back in line with MATLAB.
 | Layer stacking | No pre-Quaternary binding branch | MATLAB: region-specific branch in `get_layered_models.m` | Out of scope (region-specific) |
 | REFSEIS thickness mask (themes) | Thin-layer mask applied to the cells it describes | MATLAB: mask applied at shifted linear indices (`get_REFSEIS_theme.m`) | Not available (validation harness only) |
 | Unknown complexity (themes) | Class 0 blanked in every layer | MATLAB: blanked in the first modelled layer only (eight themes) | Not available (validation harness only) |
+| Certainty function (themes) | Danish specs use `kernel_with_point_tail` | MATLAB national run: `ILM_sep2023` (sign error); also `RBM_oct2023` (jump at the plateau edge) | `cert_fun_name="ILM_sep2023"` (or `"RBM_oct2023"`) with `allow_legacy_cert_fun=True` |
 
 ## Deliberate deviations (simulation, v1.0.0)
 
@@ -160,11 +161,12 @@ for "not simulated here". Unsimulated cells are given as NaN instead.
 
 ## MATLAB errors not reproduced (variance maps, v0.1.0)
 
-Two errors in the MATLAB theme scripts change which cells a theme informs.
-GeoSigma does what the MATLAB code evidently intends. The private validation
-harness emulates both errors, so the comparison against the MATLAB grids
-stays cell by cell; with the emulation, REFSEIS on Zealand is bit-exact
-(see the [README](../README.md)).
+Two errors in the MATLAB theme scripts change which cells a theme informs,
+and two MATLAB certainty functions are flawed. GeoSigma does what the MATLAB
+code evidently intends. The private validation harness emulates the two
+errors and uses the legacy certainty functions, so the comparison against
+the MATLAB grids stays cell by cell; with the emulation, REFSEIS on Zealand
+is bit-exact (see the [README](../README.md)).
 
 ### REFSEIS: the thickness mask lands on the wrong cells
 
@@ -205,6 +207,66 @@ range at index 0 of the range table. `get_SkyTEM_theme.m` uses the 3D mask
 there. GeoSigma blanks class 0 in every layer, as SkyTEM does. The two
 differ only at cells with unknown complexity (outside the complexity map)
 in layers below the first.
+
+### Certainty functions: `ILM_sep2023` and `RBM_oct2023` are legacy
+
+Module: `geosigma.themes.certainty_functions`. MATLAB:
+`certainty_function_definer.m`.
+
+**`ILM_sep2023` has a sign error.**
+
+```matlab
+% ILM_sep2023
+(dist<=width).*sill.*(exp(-(3*power((dist-width),2))./(power(range,2))))
+% ILM_oct2023 (the MATLAB correction)
+(dist<=width).*sill.*(exp(-(3*power((dist),2))./(power(range,2))))
+```
+
+Inside the plateau (`dist <= width`), `dist - width` is zero or negative.
+The decay is therefore measured from the plateau edge inwards: the certainty
+is lowest at the data point (`sill * exp(-3 width^2 / range^2)`) and rises to
+`sill` at the plateau edge, where it drops to zero. With a 150 m plateau and
+a 250 m range, a cell on top of a data point gets 34 % of the sill and a
+cell 150 m away gets 100 %.
+
+**`RBM_oct2023` jumps at the plateau edge.**
+
+```matlab
+ins = @(dist,range,width,sill,damp) sill.*(exp(-(damp*power((dist),2))./(power(range,2))));
+out = @(dist,range,width,sill)      sill.*(exp(-(3*power((dist),2))./(power(range,2))));
+cert_fun = @(dist,range,width,sill) (dist<=width).*ins(dist,range,width,sill,1.5) + ...
+           (dist>width).*out(dist,range,width,sill+(sill-ins(width,range,width,sill,1.5)));
+```
+
+The sill adjustment `sill + (sill - ins(width))` adds the missing certainty
+as if the tail started at full height at the edge, but the tail is centred on
+the data point and is already damped by `exp(-3 width^2 / range^2)` there.
+With `a = exp(-1.5 width^2 / range^2)` the value drops from `a * sill` to
+`(2 - a) a^2 * sill` across the edge, a jump of `a (1 - a)^2 * sill`. It is
+largest, 4/27 of the sill, at `width / range` = 0.86 (for example 0.14 of
+the sill at a 75 m plateau and a 100 m range).
+
+**What GeoSigma does.** The Danish specs (PACEP, MEP, SkyTEM, fewTEM,
+manyTEM, tTEM and the gamma and resistivity logs) use the new
+`kernel_with_point_tail`. It treats a sounding as 1D information at its x, y
+location, like a borehole: inside the sensitivity kernel it equals
+`RBM_oct2023`, and outside it a Gaussian decay centred on the data point
+starts from the kernel's value at the edge:
+
+```
+dist <= width:  sill * exp(-1.5 dist^2 / range^2)
+dist >  width:  sill * exp(-1.5 width^2 / range^2) * exp(-3 (dist^2 - width^2) / range^2)
+```
+
+The value is continuous at the edge; the slope changes there. PACES and
+REFSEIS keep `FRAFA_apr2023`.
+
+The national MATLAB run (2023) used `ILM_sep2023` for the eight themes above
+and for PACES on Funen; the Funen-MST run used `RBM_oct2023` or
+`ILM_oct2023`. Both legacy functions are kept so that the MATLAB grids can be
+reproduced, and they are validated bit-exactly that way. They raise an error
+unless the spec sets `allow_legacy_cert_fun=True` (YAML:
+`allow_legacy_cert_fun: true`).
 
 ## Corrections that now match MATLAB
 
