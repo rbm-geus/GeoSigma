@@ -73,6 +73,23 @@ def _two_regime(n_prereq, base_table, preq_table):
     ]
 
 
+def danish_well_range_model(n_prereq):
+    """Danish complexity -> range rule for the well theme, per layer.
+
+    The graded table ``[100, 500, 400, 250, 100]`` for the Quaternary layers
+    ``0 .. n_prereq-1`` and a flat 500 m from ``n_prereq`` onward, the same
+    split as the geophysical themes. Pass it as ``range_model`` to
+    :func:`~geosigma.themes.well.build_well_theme`.
+
+    This reproduces MATLAB, which gives the well theme an all-ones complexity
+    map for the pre-Quaternary layers (``Main.m``: "Same complexity for preQ
+    layers == 1!"), i.e. class 1 = 500 m for every pre-Quaternary well. Here
+    the 500 m is stated as a range table, so a well keeps its real complexity
+    class and the result does not depend on how class 1 is defined.
+    """
+    return _two_regime(n_prereq, _COMP2RANGE, _COMP2RANGE_PREQ)
+
+
 def paces_spec(n_prereq: int) -> ThemeSpec:
     """PACES theme (search radius 1 cell; FRAFA plateau kernel)."""
     return ThemeSpec(

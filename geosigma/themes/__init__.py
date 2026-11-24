@@ -95,6 +95,7 @@ from .data_io import (
     resolve_theme_spec,
 )
 from . import themes
+from .themes import danish_well_range_model
 
 __all__ = [
     "NODATA_VARIANCE",
@@ -123,6 +124,7 @@ __all__ = [
     "model_theme",
     "DANISH_CLASS_FMIN",
     "DANISH_DEPTH_RAMP",
+    "danish_well_range_model",
     "read_variance_stack",
     "write_variance_stack",
     "write_display_stack",

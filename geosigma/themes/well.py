@@ -26,10 +26,19 @@ all three assumptions, so it gets a dedicated builder:
   well sets, not one point set with per-layer columns.
 * **Range comes from the complexity at the well**, not at the grid cell.
 
+Which complexity-to-range table applies can differ between layers. Pass
+``range_model`` (a list of :class:`~geosigma.themes.base.RangeGroup`, the same
+form the geophysical themes use) to give each layer group its own table. The
+Danish rule is :func:`geosigma.themes.themes.danish_well_range_model`: the
+graded table for the Quaternary layers and a flat 500 m for the pre-Quaternary
+layers. MATLAB gets the same 500 m by passing the well theme an all-ones
+complexity map for the pre-Quaternary layers (``Main.m``); here it is stated as
+a range table, so the wells keep their real complexity class.
+
 Like the rest of :mod:`geosigma.themes`, this builder is model-agnostic: it sees
 only prepared :class:`WellSet` arrays. Reading the Danish ``.mat`` wells, the
-``terrain − z`` depth, the quality remap, the per-layer reach mask, and the
-pre-Quaternary complexity override all live in an adapter (see ``examples/``).
+``terrain − z`` depth, the quality remap and the per-layer reach mask all live
+in an adapter (see ``examples/``).
 
 ``var0`` and the quality tables
 -------------------------------
@@ -64,7 +73,12 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from .base import NODATA_VARIANCE, require_ascending
+from .base import (
+    NODATA_VARIANCE,
+    RangeGroup,
+    _resolve_group_layers,
+    require_ascending,
+)
 from .combine import GeoSigmaWarning
 
 #: Default complexity-class -> range table (class 0..4), shared with the
@@ -237,6 +251,34 @@ def _well_precision(grid_x, grid_y, w: WellSet, search_radius, comp2range, n_nea
     return prec
 
 
+def _layer_tables(comp2range, range_model, n_layers):
+    """Complexity-class -> range table for each layer."""
+    if range_model is None:
+        table = _COMP2RANGE if comp2range is None else comp2range
+        return [table] * n_layers
+    if comp2range is not None:
+        raise ValueError("give comp2range or range_model, not both")
+    tables = [None] * n_layers
+    covered = np.zeros(n_layers, dtype=int)
+    for group in range_model:
+        for layer in _resolve_group_layers(group.layers, n_layers):
+            tables[layer] = group.range_by_complexity
+            covered[layer] += 1
+    missing = np.nonzero(covered == 0)[0]
+    if missing.size:
+        raise ValueError(
+            f"range_model leaves layer(s) {missing.tolist()} uncovered; every "
+            f"layer (0..{n_layers - 1}) must belong to exactly one group"
+        )
+    overlap = np.nonzero(covered > 1)[0]
+    if overlap.size:
+        raise ValueError(
+            f"range_model covers layer(s) {overlap.tolist()} in more than one "
+            f"group; groups must be disjoint"
+        )
+    return tables
+
+
 def build_well_theme(
     grid_x,
     grid_y,
@@ -244,7 +286,8 @@ def build_well_theme(
     jup_layers: Sequence[Optional[WellSet]],
     *,
     search_radius: int = 6,
-    comp2range: Sequence[float] = _COMP2RANGE,
+    comp2range: Optional[Sequence[float]] = None,
+    range_model: Optional[Sequence[RangeGroup]] = None,
     n_nearest: int = 3,
 ):
     """Build the per-layer well variance grid (MATLAB ``get_well_theme`` stacked).
@@ -260,9 +303,16 @@ def build_well_theme(
         no-information sentinel.
     search_radius : int, default 6
         Window half-width in cells.
-    comp2range : sequence of float, default (100, 500, 400, 250, 100)
-        Complexity-class -> range table, indexed by the well's complexity class
-        (index ``k`` = class ``k``; higher = more complex).
+    comp2range : sequence of float, optional
+        Complexity-class -> range table used for every layer, indexed by the
+        well's complexity class (index ``k`` = class ``k``; higher = more
+        complex). Default ``(100, 500, 400, 250, 100)``. Give either this or
+        ``range_model``, not both.
+    range_model : sequence of :class:`~geosigma.themes.base.RangeGroup`, optional
+        One complexity-class -> range table per group of layers, as in
+        :attr:`ThemeSpec.range_model`. The groups must cover every layer
+        exactly once. Use it when the rule differs with depth, e.g. the Danish
+        :func:`~geosigma.themes.themes.danish_well_range_model`.
     n_nearest : int, default 3
         Maximum number of nearest wells summed per cell.
 
@@ -278,7 +328,9 @@ def build_well_theme(
     ------
     ValueError
         If a well set has a quality outside ``1..len(Ks)`` (including 0, NaN
-        and non-integers), or ``gradients`` and ``Ks`` of different lengths.
+        and non-integers), or ``gradients`` and ``Ks`` of different lengths;
+        if both ``comp2range`` and ``range_model`` are given; or if
+        ``range_model`` leaves a layer uncovered or covers one twice.
 
     Warns
     -----
@@ -292,6 +344,7 @@ def build_well_theme(
     n_layers = len(snap_layers)
     if len(jup_layers) != n_layers:
         raise ValueError("snap_layers and jup_layers must have equal length")
+    tables = _layer_tables(comp2range, range_model, n_layers)
 
     # Validate every well set before computing anything, so a bad quality is
     # reported up front with its layer and source rather than mid-build.
@@ -309,7 +362,7 @@ def build_well_theme(
         for wset in (snap_layers[s], jup_layers[s]):
             if wset is not None and np.asarray(wset.xs).size:
                 prec += _well_precision(
-                    grid_x, grid_y, wset, search_radius, comp2range, n_nearest
+                    grid_x, grid_y, wset, search_radius, tables[s], n_nearest
                 )
         with np.errstate(divide="ignore"):
             var = np.where(prec > 0, 1.0 / prec, NODATA_VARIANCE)
