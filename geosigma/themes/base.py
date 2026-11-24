@@ -247,6 +247,10 @@ class ThemeSpec:
     post_reduce_fn: Optional[
         Callable[[Mapping[str, np.ndarray]], Mapping[str, np.ndarray]]
     ] = None
+    #: Allow a legacy MATLAB certainty kernel (``ILM_sep2023``, ``RBM_oct2023``;
+    #: see :data:`~geosigma.themes.certainty_functions.LEGACY_CERTAINTY_FUNCTIONS`)
+    #: as ``cert_fun_name``. Only for reproducing MATLAB runs.
+    allow_legacy_cert_fun: bool = False
 
 
 _REDUCERS = ("mean", "min", "max", "first")
@@ -574,7 +578,9 @@ def build_theme(
         kernelmap = spec.kernel_fn(attrs)
         from .certainty_functions import certainty_function
 
-        cert_fun = certainty_function(spec.cert_fun_name)
+        cert_fun = certainty_function(
+            spec.cert_fun_name, allow_legacy=spec.allow_legacy_cert_fun
+        )
         dist3 = np.repeat(local_dist[:, :, None], n_layers, axis=2)
         certmap = cert_fun(dist3, rangemap, kernelmap, 1.0 / var0map)
         grid = 1.0 / certmap

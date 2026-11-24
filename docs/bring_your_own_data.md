@@ -190,18 +190,33 @@ spec stores only the name so it stays serialisable to and from YAML.
 A *certainty function* (kernel) is the decay model: given the distance from a cell
 to its nearest contributing point, the effective correlation range, the plateau
 half-width (choice 5), and the plateau certainty `sill = 1/var0` (choice 6), it
-returns the certainty at that cell. GeoSigma ships four named kernels:
+returns the certainty at that cell. GeoSigma ships these named kernels:
 
-- `FRAFA_apr2023`
-- `ILM_sep2023`
-- `ILM_oct2023`
-- `RBM_oct2023`
+| Kernel | Inside the plateau (`dist <= width`) | Outside | Status |
+|---|---|---|---|
+| `kernel_with_point_tail` | `sill * exp(-1.5 dist² / range²)` | Gaussian tail centred on the data point, starting from the value at the edge | **Recommended**; used by the Danish specs |
+| `FRAFA_apr2023` | flat, `sill` | Gaussian decay measured from the plateau edge | Used by PACES and reflection seismic |
+| `ILM_oct2023` | `sill * exp(-3 dist² / range²)` | zero | MATLAB |
+| `ILM_sep2023` | rises from the data point to `sill` at the edge (sign error) | zero | **Legacy**, validation only |
+| `RBM_oct2023` | as `kernel_with_point_tail` | Gaussian tail with a jump at the edge | **Legacy**, validation only |
 
-These encode **specific scientific choices** made in producing the DK-model
-variance maps — each a particular assumption about how a Danish data type's
-certainty decays with distance. They are not generic defaults. **If you are
-reproducing the Danish results, use the preset names as-is**; substituting a
-different kernel will change the output.
+`kernel_with_point_tail` treats a sounding as 1D information at its x, y
+location, like a borehole. Inside the sensitivity kernel the certainty decays
+gently from the data point. Outside it, a Gaussian decay that is also centred on
+the data point takes over from the kernel's value at the edge:
+
+```
+dist <= width:  sill * exp(-1.5 dist^2 / range^2)
+dist >  width:  sill * exp(-1.5 width^2 / range^2) * exp(-3 (dist^2 - width^2) / range^2)
+```
+
+The value is continuous at the edge; the slope changes there (the tail decays
+twice as fast as the kernel at `dist = width`).
+
+The two legacy kernels are kept only to reproduce the MATLAB grids of the
+national model. Asking for one raises an error unless the spec sets
+`allow_legacy_cert_fun=True` (YAML: `allow_legacy_cert_fun: true`); see
+[`deviations_from_matlab.md`](deviations_from_matlab.md).
 
 **Reasoning for your setting.** If your data type or geological setting implies a
 different decay assumption, register your own kernel and reference it by name — the
@@ -236,8 +251,9 @@ kernels belong in `geosigma/themes/certainty_functions.py`, never scattered acro
 theme scripts.
 
 **Danish illustration [methods citation].** PACES and reflection seismic use
-`FRAFA_apr2023` (a flat plateau, Gaussian decay outside); the TEM and log themes
-use `ILM_sep2023` (Gaussian decay measured from the plateau edge).
+`FRAFA_apr2023` (a flat plateau, Gaussian decay outside); the TEM, PACEP, MEP
+and log themes use `kernel_with_point_tail`. The national MATLAB run used the
+legacy `ILM_sep2023` for those themes.
 
 ## Choice 5 — The near-source plateau half-width
 
@@ -335,14 +351,14 @@ ways `cert` can vanish:
 
 `cert` hits exactly zero when a data point **is** inside the search window but
 its distance exceeds the plateau half-width (choice 5) under a plateau-limited
-kernel. `ILM_sep2023` and `ILM_oct2023` — and the example kernel below — are
-written in the multiplicative form `(dist <= width) * sill * exp(...)`, which is
-literally `0 * something` outside the plateau. (This form is deliberate and
-matches the MATLAB: see the note in
+kernel. `ILM_oct2023` and the legacy `ILM_sep2023` — and the example kernel
+below — are written in the multiplicative form `(dist <= width) * sill *
+exp(...)`, which is literally `0 * something` outside the plateau. (This form is
+deliberate and matches the MATLAB: see the note in
 `geosigma/themes/certainty_functions.py`. The `np.where`-based kernels
-`FRAFA_apr2023` and `RBM_oct2023` never return an analytic zero, but their
-Gaussian tail can still underflow to `0` at a large enough `dist / range_`,
-giving the same `inf`.)
+`kernel_with_point_tail`, `FRAFA_apr2023` and `RBM_oct2023` never return an
+analytic zero, but their Gaussian tail can still underflow to `0` at a large
+enough `dist / range_`, giving the same `inf`.)
 
 So `inf` cells are the annulus between the plateau edge and the search-window
 edge. If nearly your whole grid is `inf`, the usual cause is a plateau that is

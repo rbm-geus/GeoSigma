@@ -58,6 +58,7 @@ from .base import (
     windowed_nearest,
 )
 from .certainty_functions import (
+    LEGACY_CERTAINTY_FUNCTIONS,
     available_certainty_functions,
     certainty_function,
     register_certainty_function,
@@ -113,6 +114,7 @@ __all__ = [
     "build_well_theme",
     "certainty_function",
     "available_certainty_functions",
+    "LEGACY_CERTAINTY_FUNCTIONS",
     "register_certainty_function",
     "combine_variances",
     "constant_prior",

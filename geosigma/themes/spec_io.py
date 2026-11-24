@@ -15,7 +15,7 @@ The mapping is one-to-one with :class:`ThemeSpec`::
 
     name: droneTEM
     search_radius: 4
-    cert_fun: ILM_sep2023          # a name from certainty_function_definer
+    cert_fun: kernel_with_point_tail   # a name from certainty_functions
     combine: nearest               # only 'nearest' (the engine); see below
     attributes:                    # name -> tie reducer (mean|min|max|first)
       depth: mean
@@ -64,7 +64,10 @@ from typing import Any, Mapping
 import numpy as np
 
 from .base import LayerSelector, RangeGroup, ThemeSpec
-from .certainty_functions import available_certainty_functions
+from .certainty_functions import (
+    available_certainty_functions,
+    check_legacy_certainty_function,
+)
 
 #: numpy functions callable from a spec expression. Names are deliberately the
 #: bare numpy names the Python specs already use (``maximum`` not ``max``).
@@ -267,6 +270,12 @@ def load_spec(d: Mapping[str, Any]) -> ThemeSpec:
             f"{available_certainty_functions()}. New kernels belong in "
             f"certainty_function_definer / themes.certainty_functions."
         )
+    allow_legacy = d.get("allow_legacy_cert_fun", False)
+    if not isinstance(allow_legacy, bool):
+        raise ValueError(
+            f"allow_legacy_cert_fun must be true or false, got {allow_legacy!r}"
+        )
+    check_legacy_certainty_function(cert_fun, allow_legacy)
 
     combine = d.get("combine", "nearest")
     if combine not in _SUPPORTED_COMBINE:
@@ -304,6 +313,7 @@ def load_spec(d: Mapping[str, Any]) -> ThemeSpec:
             if d.get("active_layers") is not None
             else None
         ),
+        allow_legacy_cert_fun=allow_legacy,
     )
 
 
@@ -350,6 +360,8 @@ def dump_spec(spec: ThemeSpec) -> dict:
     }
     if spec.active_layers is not None:
         out["active_layers"] = [int(i) for i in spec.active_layers]
+    if spec.allow_legacy_cert_fun:
+        out["allow_legacy_cert_fun"] = True
     return out
 
 
