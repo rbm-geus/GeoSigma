@@ -481,6 +481,10 @@ def combine_and_export(themes, model_class, terrain, bottom_stack, meta, out_dir
     return final, themes
 
 
+#: Upper limit of the shared colour scale for the final-std panels [m].
+FINAL_STD_VMAX = 30.0
+
+
 def qa_figure(themes, final, grid_x, grid_y, out_png, layers=None):
     """Save a QA figure: per-theme coverage and final std."""
     import matplotlib
@@ -495,26 +499,37 @@ def qa_figure(themes, final, grid_x, grid_y, out_png, layers=None):
     ncols = len(layers)
     nrows = len(names) + 1
     fig, axs = plt.subplots(
-        nrows, ncols, figsize=(3.6 * ncols, 3.1 * nrows), squeeze=False
+        nrows,
+        ncols,
+        figsize=(3.6 * ncols, 3.1 * nrows),
+        squeeze=False,
+        layout="constrained",
     )
 
-    def show(ax, img, title, cmap="viridis", vmin=None, vmax=None, label="std [m]"):
-        im = ax.imshow(img, origin="lower", extent=ext, cmap=cmap, vmin=vmin, vmax=vmax)
+    def show(ax, img, title, vmin, vmax):
+        im = ax.imshow(
+            img, origin="lower", extent=ext, cmap="viridis", vmin=vmin, vmax=vmax
+        )
         ax.set_title(title, fontsize=9)
         ax.set_xticks([])
         ax.set_yticks([])
-        fig.colorbar(im, ax=ax, shrink=0.8, label=label)
+        return im
 
     for r, name in enumerate(names):
         for c, s in enumerate(layers):
             g = themes[name][:, :, s]
             g = np.where(np.isfinite(g) & (g < NODATA_VARIANCE), np.sqrt(g), np.nan)
-            show(axs[r, c], g, f"{name} theme, layer {s + 1}", vmin=0, vmax=20)
+            im = show(axs[r, c], g, f"{name} theme, layer {s + 1}", 0, 20)
+            fig.colorbar(im, ax=axs[r, c], shrink=0.8, label="std [m]")
+    # The final panels share one colour scale so the layers compare directly;
+    # extend="max" marks cells above FINAL_STD_VMAX.
     r = len(names)
     for c, s in enumerate(layers):
-        show(axs[r, c], np.sqrt(final[:, :, s]), f"FINAL std, layer {s + 1}", vmin=0)
+        std = np.sqrt(final[:, :, s])
+        im = show(axs[r, c], std, f"FINAL std, layer {s + 1}", 0, FINAL_STD_VMAX)
+        print(f"    FINAL std layer {s + 1:2d}: max {np.nanmax(std):.1f} m")
+    fig.colorbar(im, ax=axs[r, :], shrink=0.8, extend="max", label="final std [m]")
     fig.suptitle("GeoSigma QA — white = no information from that source", fontsize=11)
-    fig.tight_layout()
     Path(out_png).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_png, dpi=110)
     plt.close(fig)
