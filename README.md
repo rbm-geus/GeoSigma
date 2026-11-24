@@ -27,7 +27,7 @@ The variance maps are a self-contained product. The kriging stage will take a pe
 
 ### Validation status (v0.1.0)
 
-The built-in themes were run on the same input data as the original MATLAB implementation of the national hydrostratigraphic model of Denmark and compared cell by cell with the MATLAB reference grids, on spatial windows of the Jutland region. The comparison harness uses the full national datasets and is not part of this repository. Some reference grids in that MATLAB run were cached from older runs on older input data; where that limits a comparison, the table says so.
+The built-in themes were run on the same input data as the original MATLAB implementation of the national hydrostratigraphic model of Denmark and compared cell by cell with the MATLAB reference grids: on spatial windows of the Jutland region, and for PACES and REFSEIS on the whole Funen and Zealand region grids. The comparison harness uses the full national datasets and is not part of this repository. Some reference grids in that MATLAB run were cached from older runs on older input data; where that limits a comparison, the table says so.
 
 | Theme | Information source | Status |
 |---|---|---|
@@ -36,12 +36,12 @@ The built-in themes were run on the same input data as the original MATLAB imple
 | SkyTEM | Airborne TEM | ✅ Bit-exact (max \|Δ\| 1.5e-11) |
 | PACEP | Pulled-array continuous electrical profiling | ✅ Bit-exact (max \|Δ\| 1.4e-14) |
 | MEP | Multi-electrode profiling | ✅ Bit-exact (max \|Δ\| 8.5e-14, including Wenner-array data) |
-| REFSEIS | Reflection seismics | ✅ Bit-exact (max \|Δ\| 2.9e-11) where the reference and the input come from the same dataset. The reference was cached before deeper seismic picks were added to the input, so layers resolved only by those picks could not be compared. |
+| REFSEIS | Reflection seismics | ✅ Bit-exact on Zealand (whole region grid, max \|Δ\| 2.9e-11) with two MATLAB errors emulated in the harness: the thickness mask lands on the wrong cells, and unknown complexity is blanked in the first layer only (see [`docs/deviations_from_matlab.md`](docs/deviations_from_matlab.md)). On Jutland the same two errors account for the deeper layers (bit-exact on the whole grid in a tested layer). The shallower seismic layers (engine layers 12–26) differ from the reference: under investigation. |
 | GAMMALOG | Gamma borehole logs | ✅ Bit-exact (max \|Δ\| 9e-16) |
 | RESLOG | Resistivity borehole logs | ✅ Bit-exact (max \|Δ\| 2e-13) |
-| Wells | Lithological borehole descriptions | ◐ **Partly validated.** Snapped wells: coverage matches, and values match exactly where the reference used the same complexity map. The Jupiter-borehole contribution is missing from the reference, so it is untested. |
+| Wells | Lithological borehole descriptions | ◐ **Partly validated.** Snapped wells: coverage matches, and values match exactly where the reference used the same complexity map. The Jupiter-borehole contribution is missing from the reference, so it is untested. The validation covers the code: the national maps from 2022/23 were computed with swapped Jupiter quality ratings from MST's data-preparation script (good and bad inverted), an error in the input data, not in MATLAB or GeoSigma. |
 | tTEM | Towed TEM | ◐ **Partly validated.** No-data handling matches inside the combined map. No tTEM reference grid exists and the comparison window held no tTEM data, so informative values are untested. |
-| PACES | Pulled-array continuous electrical sounding | ⬜ **Not validated.** No PACES reference grid exists, and the combined reference was built without the current PACES contribution. |
+| PACES | Pulled-array continuous electrical sounding | ✅ Bit-exact on Funen (whole region grid, max \|Δ\| 8.9e-16) with the certainty function of that run, `ILM_sep2023`, and on Funen-MST with both `RBM_oct2023` and `ILM_oct2023` (max \|Δ\| 1.8e-15). `paces_spec` uses `FRAFA_apr2023`, the function of the Jutland run; there, no PACES reference grid exists. |
 | **Combine + floor** | All themes → final variance map | ✅ Matches to machine precision (median relative difference 0) wherever the reference is current. The remaining 2.3 % of cells come from the cached PACES and REFSEIS references. |
 
 "Bit-exact" means agreement to floating-point round-off (max absolute difference ≤ 1e-10 m²). Closing the open rows needs a fresh MATLAB reference run on current data. The geostatistical primitives that v1.0.0 builds on are covered by unit tests.
