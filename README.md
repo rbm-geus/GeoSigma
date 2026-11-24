@@ -124,6 +124,10 @@ data relative to the script file, so they run from any working directory.
 
   ![Expected output of demo_variance_map.py: data locations, per-source themes, the model theme, and the combined variance for four layers](docs/images/demo_variance_map.png)
 
+- [`bjerringbro/`](examples/bjerringbro/README.md): **an example with real data.** Variance maps for a 15-layer model of a 10 × 10 km area at Bjerringbro in central Jutland, built from GERDA geophysics (SkyTEM, ground TEM and PACES soundings), Jupiter boreholes (both from GEUS) and the national geological complexity map. The example README lists the data sources and their terms, how the inputs were prepared, and the limitations. The example was prepared by Mathias Busk Nielsen. Run it with `python examples/bjerringbro/geosigma_dk_workflow.py`.
+
+  <img src="examples/bjerringbro/expected_output/qa_overview.png" alt="Expected QA figure of the Bjerringbro example: coverage of each data source and the final standard deviation for four layers" width="480">
+
 - `demo_region_config.py`: describe a model's layers and surface files with a `RegionConfig`.
 - `demo_load_hydrostrat_model_geotiff.py`, `demo_load_jutland_hydrostrat_model.py`, `demo_load_hydrostrat_layer_geotiff.py`: load and plot the sample Jutland model (GeoTIFF).
 - `demo_load_funen_hydrostrat_model.py`: load a model supplied as ESRI ASCII grids (Funen).
