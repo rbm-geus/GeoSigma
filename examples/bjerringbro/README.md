@@ -62,6 +62,11 @@ This takes about 15 seconds and writes:
 | `output/variance_maps/std_NN.tif` | Standard deviation [m] for viewing in QGIS |
 | `output/variance_maps/qa_overview.png` | Data coverage per source and final std |
 
+The expected QA figure is committed as `expected_output/qa_overview.png`;
+your run should reproduce it:
+
+![Expected QA overview](expected_output/qa_overview.png)
+
 All settings are in the `CONFIG` block at the top of `geosigma_dk_workflow.py`.
 
 ## Folder contents
@@ -87,6 +92,8 @@ examples/bjerringbro/
 │   ├── crop_complexity.py        national complexity map -> model grid
 │   ├── model_class_to_grid.py    a model-quality class grid -> model grid
 │   └── class_grids.py            shared shift / majority-vote helpers
+├── expected_output/
+│   └── qa_overview.png       the QA figure a correct run produces
 
 ```
 
@@ -136,6 +143,12 @@ Each manifest's `_notes` records the source file and how many soundings were kep
   stops otherwise. `data_prep/model_class_to_grid.py` puts a grid there (a
   shift for the same cell size, otherwise a majority vote in which the lower,
   more uncertain class wins ties).
+- **Borehole footprints are square in the pre-Quaternary layers.** The well
+  theme sums contributions inside a square search window of ±6 cells
+  (600 m). With the flat 500 m range used for pre-Quaternary layers, the
+  Gaussian decay has not died out at the window edge (about 1 % of the sill
+  at 600 m), so it is cut off along a square. MATLAB `get_well_theme.m`
+  uses the same window and behaves the same way.
 - **Coverage is sparse.** Each geophysical method informs at most about 5 % of
   the cells per layer, so most of the area carries the model theme's background
   uncertainty (median std 6–28 m, increasing with depth).
