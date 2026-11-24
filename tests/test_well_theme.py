@@ -253,3 +253,100 @@ def test_increasing_or_flat_tables_do_not_warn():
         _w.simplefilter("always")
         build_well_theme(gx, gy, [_one_well(1), flat], [None, None])
     assert not [r for r in rec if issubclass(r.category, GeoSigmaWarning)]
+
+
+# --------------------------------------------------------------------------- #
+# Per-layer range tables (range_model) and the Danish pre-Quaternary rule
+# --------------------------------------------------------------------------- #
+def _case_full(seed=3, n_layers=4):
+    rng = np.random.default_rng(seed)
+    grid_x = np.arange(9) * 100.0 + 500_000.0
+    grid_y = np.arange(7) * 100.0 + 6_100_000.0
+    snap = [_wellset(rng, 12, grid_x, grid_y) for _ in range(n_layers)]
+    jup = [_wellset(rng, 8, grid_x, grid_y) for _ in range(n_layers)]
+    return grid_x, grid_y, snap, jup
+
+
+def test_range_model_uses_each_layers_table():
+    from geosigma.themes import RangeGroup
+
+    grid_x, grid_y, snap, jup = _case_full()
+    graded = (100.0, 500.0, 400.0, 250.0, 100.0)
+    flat = (500.0,) * 5
+    model = [
+        RangeGroup(layers=(0, 1), range_by_complexity=graded),
+        RangeGroup(layers=(2, None), range_by_complexity=flat),
+    ]
+    got = build_well_theme(grid_x, grid_y, snap, jup, range_model=model)
+    top = naive_well_theme(grid_x, grid_y, snap[:2], jup[:2], comp2range=graded)
+    deep = naive_well_theme(grid_x, grid_y, snap[2:], jup[2:], comp2range=flat)
+    np.testing.assert_array_equal(got, np.concatenate([top, deep], axis=2))
+
+
+def test_danish_rule_matches_matlab_all_ones_map_for_pre_quaternary():
+    # MATLAB: pre-Q wells get complexity class 1 (all-ones map) and the graded
+    # table; the library: real classes and a flat 500 m table. Same result.
+    from geosigma.themes import danish_well_range_model
+
+    grid_x, grid_y, snap, jup = _case_full()
+    n_prereq = 2
+
+    def ones(w):
+        return WellSet(
+            xs=w.xs,
+            ys=w.ys,
+            depth=w.depth,
+            quality=w.quality,
+            comp_class=np.ones_like(w.comp_class),
+            gradients=w.gradients,
+            Ks=w.Ks,
+        )
+
+    snap_m = snap[:n_prereq] + [ones(w) for w in snap[n_prereq:]]
+    jup_m = jup[:n_prereq] + [ones(w) for w in jup[n_prereq:]]
+    matlab = build_well_theme(grid_x, grid_y, snap_m, jup_m)
+    lib = build_well_theme(
+        grid_x, grid_y, snap, jup, range_model=danish_well_range_model(n_prereq)
+    )
+    np.testing.assert_array_equal(lib, matlab)
+
+
+def test_range_model_and_comp2range_are_exclusive():
+    from geosigma.themes import danish_well_range_model
+
+    grid_x, grid_y, snap, jup = _case_full()
+    with pytest.raises(ValueError, match="not both"):
+        build_well_theme(
+            grid_x,
+            grid_y,
+            snap,
+            jup,
+            comp2range=(100.0,) * 5,
+            range_model=danish_well_range_model(2),
+        )
+
+
+def test_range_model_must_cover_every_layer_once():
+    from geosigma.themes import RangeGroup
+
+    grid_x, grid_y, snap, jup = _case_full()
+    t = (100.0,) * 5
+    with pytest.raises(ValueError, match="uncovered"):
+        build_well_theme(
+            grid_x,
+            grid_y,
+            snap,
+            jup,
+            range_model=[RangeGroup(layers=(0, 1), range_by_complexity=t)],
+        )
+    with pytest.raises(ValueError, match="more than one"):
+        build_well_theme(
+            grid_x,
+            grid_y,
+            snap,
+            jup,
+            range_model=[
+                RangeGroup(layers="all", range_by_complexity=t),
+                RangeGroup(layers=(0, 0), range_by_complexity=t),
+            ],
+        )

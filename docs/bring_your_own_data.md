@@ -667,7 +667,13 @@ model and are not defaults:
 (The MATLAB source writes the gradients as `0.5 * [0.02 0.03 0.07 0.1]` and
 `0.5 * [0.025 0.035 0.075 0.105]`.) The range table by complexity class is
 `(100, 500, 400, 250, 100)` m for class 0 (unknown) to 4 (most complex), the
-default `comp2range` of `build_well_theme`.
+default `comp2range` of `build_well_theme`. If the rule differs with depth, pass
+`range_model` instead: a list of `RangeGroup`s, one table per group of layers,
+as for the geophysical themes. The Danish rule is
+`danish_well_range_model(n_prereq)`: the graded table above for the Quaternary
+layers and a flat 500 m for the pre-Quaternary layers. (MATLAB gets the same
+500 m by giving the well theme an all-ones complexity map for those layers;
+GeoSigma states it as a range table, so each well keeps its real class.)
 
 > **Check the direction of your source's rating before you use it.** The
 > builder only indexes the tables; it cannot tell a reversed scale from a
