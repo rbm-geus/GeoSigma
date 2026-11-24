@@ -15,9 +15,11 @@ attributes:
 
 # No regime change: a SINGLE group covering all layers. (A different CRS / layer
 # count than the Danish model is fine — nothing here is Denmark-specific.)
+# The table is flat: the demo supplies no complexity map, so every cell is
+# class 1 and the range is 300 m, well beyond the 60 m kernel.
 range_model:
   - layers: "all"
-    range_by_complexity: [50, 300, 250, 150, 80]
+    range_by_complexity: [300, 300, 300, 300, 300]
 
 # Thickness-driven var0 (like the TEM family); plateau half-width grows with
 # depth; masked where the boundary lies below the depth of investigation.
