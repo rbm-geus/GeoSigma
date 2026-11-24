@@ -21,8 +21,10 @@ range_model:
   - layers: "all"
     range_by_complexity: [300, 300, 300, 300, 300]
 
-# Thickness-driven var0 (like the TEM family); plateau half-width grows with
-# depth; masked where the boundary lies below the depth of investigation.
+# Thickness-driven var0 (like the TEM family): thick is the thickness of the
+# inversion-model layer that holds the boundary (> 0, growing with depth), so
+# the uncertainty grows with depth. The plateau half-width grows with depth;
+# masked where the boundary lies below the depth of investigation.
 var0: "(0.5 * 1.2 * thick)**2"
 kernel: "maximum(depth, 60)"
 mask: "doi < depth"

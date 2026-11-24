@@ -40,8 +40,10 @@ for illustration. The model theme is passed to
 
 .. important::
    **The data are synthetic and the specs are illustrative.** The data points
-   are randomly generated; their depths and thicknesses are read off the sample
-   model surfaces. Neither ``dronetem.spec.yaml`` nor the inline borehole spec
+   are randomly generated; their depths are read off the sample model
+   surfaces. droneTEM's ``thick`` is the thickness of the layer of a synthetic
+   inversion model that holds each boundary (see ``inversion_layer_thickness``).
+   Neither ``dronetem.spec.yaml`` nor the inline borehole spec
    is a calibrated (Danish or otherwise) uncertainty model, and neither is the
    single-class model theme; they exist to show the workflow. For the reasoning
    behind real specs, see ``docs/bring_your_own_data.md``.
@@ -103,10 +105,32 @@ grid_x, grid_y, _, _ = grid_coordinates_from_esri_meta(meta)
 terrain = np.flipud(top).astype(float)
 bottom_stack = np.stack([np.flipud(b) for b in bottoms], axis=-1).astype(float)
 
-# Per-cell boundary depth below terrain, and layer thickness, per layer.
+# Per-cell boundary depth below terrain, per layer.
 depth_grid = terrain[:, :, None] - bottom_stack
-upper = np.concatenate([terrain[:, :, None], bottom_stack[:, :, :-1]], axis=-1)
-thick_grid = upper - bottom_stack
+
+# A synthetic 1D inversion model shared by every droneTEM sounding: 30 layers
+# whose thickness grows geometrically with depth (2 m at the top, x1.1 per
+# layer, ~330 m in total), as in a smooth TEM inversion. For the TEM family,
+# ``thick__L*`` is the thickness of the INVERSION layer that holds the
+# interpreted boundary, not the thickness of a hydrostratigraphic layer, so it
+# is always > 0 and grows with depth.
+INVERSION_INTERFACES = np.concatenate(
+    [[0.0], np.cumsum(2.0 * 1.1 ** np.arange(30))]
+)
+
+
+def inversion_layer_thickness(depth):
+    """Thickness of the inversion layer that holds ``depth`` (m below terrain).
+
+    Below the deepest interface the boundary lies in the half-space, which has
+    no thickness: NaN, as in the ThemeData format.
+    """
+    depth = np.asarray(depth, dtype=float)
+    thickness = np.diff(INVERSION_INTERFACES)
+    k = np.searchsorted(INVERSION_INTERFACES, np.maximum(depth, 0.0), side="right") - 1
+    inside = k < thickness.size
+    return np.where(inside, thickness[np.minimum(k, thickness.size - 1)], np.nan)
+
 
 print(f"Region: {cfg.name}")
 print(
@@ -139,7 +163,7 @@ drone = ThemeData(
     ys=drone_y,
     attributes={
         "depth": sample_at(drone_x, drone_y, depth_grid),
-        "thick": sample_at(drone_x, drone_y, thick_grid),
+        "thick": inversion_layer_thickness(sample_at(drone_x, drone_y, depth_grid)),
         # Depth of investigation per sounding (m below terrain).
         "doi": rng.uniform(60.0, 120.0, drone_x.size),
     },
