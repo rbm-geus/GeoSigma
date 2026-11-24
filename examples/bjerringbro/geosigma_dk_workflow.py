@@ -51,6 +51,7 @@ from geosigma.themes import (
     build_theme,
     build_well_theme,
     combine_variances,
+    danish_well_range_model,
     informed_mask,
     load_spec_yaml,
     load_theme_data,
@@ -367,7 +368,9 @@ JUP_GRADIENTS = [0.5 * g for g in (0.025, 0.035, 0.075, 0.105)]
 JUP_KS = [0.4, 1.5, 2.5, 3.0]
 
 
-def build_borehole_theme(wells_csv, grid_x, grid_y, n_layers, complexity, meta):
+def build_borehole_theme(
+    wells_csv, grid_x, grid_y, n_layers, complexity, meta, n_prereq=None
+):
     df = pd.read_csv(wells_csv)
     required = {"x", "y", "layer", "z_boundary", "terrain", "quality", "source"}
     missing = required - set(df.columns)
@@ -415,7 +418,17 @@ def build_borehole_theme(wells_csv, grid_x, grid_y, n_layers, complexity, meta):
                 )
             )
 
-    grid = build_well_theme(grid_x, grid_y, snap_layers, jup_layers, search_radius=6)
+    # Danish rule: the complexity-graded range for the Quaternary layers and a
+    # flat 500 m for the pre-Quaternary ones (from n_prereq on), as in MATLAB.
+    n_prereq = n_layers if n_prereq is None else n_prereq
+    grid = build_well_theme(
+        grid_x,
+        grid_y,
+        snap_layers,
+        jup_layers,
+        search_radius=6,
+        range_model=danish_well_range_model(n_prereq),
+    )
     print(
         f"[4] Well theme: {df.well_id.nunique() if 'well_id' in df else len(df)} "
         "wells, "
@@ -672,7 +685,13 @@ def run(conf):
     themes = build_geophysics_themes(conf, grid_x, grid_y, n_layers, complexity, meta)
     if conf["wells_csv"]:
         themes["wells"] = build_borehole_theme(
-            conf["wells_csv"], grid_x, grid_y, n_layers, complexity, meta
+            conf["wells_csv"],
+            grid_x,
+            grid_y,
+            n_layers,
+            complexity,
+            meta,
+            n_prereq=conf["n_prereq"],
         )
 
     final, themes = combine_and_export(

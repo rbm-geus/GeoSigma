@@ -318,3 +318,26 @@ def test_model_class_prep_keeps_class_0_and_fills_gaps():
     src = _meta(0.0, 0.0, 2, 1, 100.0)
     out, _ = mod.to_model_grid(np.array([[0.0, np.nan]]), src, model, fill_class=2)
     np.testing.assert_array_equal(out, [[0, 2, 2]])
+
+
+# --------------------------------------------------------------------------- #
+# Borehole theme: pre-Quaternary wells use a flat 500 m range
+# --------------------------------------------------------------------------- #
+def test_pre_quaternary_wells_do_not_depend_on_the_complexity_map():
+    wf, conf, meta, terrain = _model()
+    cfg, _, gx, gy, _, _ = wf.load_model(conf["region_config"])
+    n = cfg.n_modelled_layers
+    n_prereq = conf["n_prereq"]
+    comp, _ = wf.load_support_grids(conf, terrain, meta)
+
+    def wells(c):
+        return wf.build_borehole_theme(
+            conf["wells_csv"], gx, gy, n, c, meta, n_prereq=n_prereq
+        )
+
+    real = wells(comp)
+    other = wells(np.full_like(comp, 4))  # every well "most complex"
+    # Pre-Quaternary stack layers: flat 500 m, so the map has no effect.
+    np.testing.assert_array_equal(real[:, :, n_prereq:], other[:, :, n_prereq:])
+    # Quaternary layers do use it (wells there sit in classes 2 and 3).
+    assert not np.array_equal(real[:, :, :n_prereq], other[:, :, :n_prereq])
