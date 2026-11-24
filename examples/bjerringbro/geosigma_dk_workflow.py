@@ -482,7 +482,7 @@ def combine_and_export(themes, model_class, terrain, bottom_stack, meta, out_dir
 
 
 #: Upper limit of the shared colour scale for the final-std panels [m].
-FINAL_STD_VMAX = 30.0
+FINAL_STD_VMAX = 35.0
 
 
 def qa_figure(themes, final, grid_x, grid_y, out_png, layers=None):
