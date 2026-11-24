@@ -7,6 +7,8 @@ the library relate to that code differently:
 - **The variance-map tool (v0.1.0, `geosigma.themes`)** reproduces the MATLAB
   output. The built-in themes are validated cell by cell against MATLAB
   reference grids (see *Validation status* in the [README](../README.md)).
+  Two errors in the MATLAB themes are deliberately not reproduced; they are
+  listed under *MATLAB errors not reproduced* below.
 - **The simulation (v1.0.0: `geosigma.preprocess`, `geosigma.kriging`,
   `geosigma.assembly`)** implements the method published in
   Madsen et al. (2026), *Mathematical Geosciences*, with **deliberate
@@ -17,8 +19,9 @@ the library relate to that code differently:
   the default is the improved behaviour and the original behaviour is
   available on request (see the table).
 
-This page lists every deliberate deviation, and separately the corrections
-that brought earlier Python code back in line with MATLAB.
+This page lists every deliberate deviation, the MATLAB errors the themes do
+not reproduce, and separately the corrections that brought earlier Python code
+back in line with MATLAB.
 
 ## Summary
 
@@ -31,6 +34,8 @@ that brought earlier Python code back in line with MATLAB.
 | SOM clustering | Standard Kohonen SOM, new implementation | MATLAB: `selforgmap` (Deep Learning Toolbox) | Not possible (proprietary internals) |
 | INPOX transfer function | Published parameters (Madsen et al. 2024, Table 1, T4) | MATLAB: undocumented literals in `drawpoints.m` | Pass the MATLAB values in `ext_vals` (same transfer function; drawn points differ, see below) |
 | Layer stacking | No pre-Quaternary binding branch | MATLAB: region-specific branch in `get_layered_models.m` | Out of scope (region-specific) |
+| REFSEIS thickness mask (themes) | Thin-layer mask applied to the cells it describes | MATLAB: mask applied at shifted linear indices (`get_REFSEIS_theme.m`) | Not available (validation harness only) |
+| Unknown complexity (themes) | Class 0 blanked in every layer | MATLAB: blanked in the first modelled layer only (eight themes) | Not available (validation harness only) |
 
 ## Deliberate deviations (simulation, v1.0.0)
 
@@ -152,6 +157,54 @@ so a layer pinches out instead of inverting. Two parts are deliberately not
 translated: the pre-Quaternary binding branch, which is Danish
 region-specific logic driven by `landsdel_switch`, and the onshore-mask test
 for "not simulated here". Unsimulated cells are given as NaN instead.
+
+## MATLAB errors not reproduced (variance maps, v0.1.0)
+
+Two errors in the MATLAB theme scripts change which cells a theme informs.
+GeoSigma does what the MATLAB code evidently intends. The private validation
+harness emulates both errors, so the comparison against the MATLAB grids
+stays cell by cell; with the emulation, REFSEIS on Zealand is bit-exact
+(see the [README](../README.md)).
+
+### REFSEIS: the thickness mask lands on the wrong cells
+
+Module: `geosigma.themes.themes.refseis_spec`. MATLAB:
+`get_REFSEIS_theme.m`, `toi_filter = local_model_thick < 100;
+Grid(toi_filter) = 100000;`.
+
+The theme blanks cells whose nearest seismic point reports a layer thinner
+than 100 m. In MATLAB, `local_model_thick` is not preallocated (REFSEIS is
+the only theme where this is the case). It grows by assignment inside the
+`parfor`, so its size is (last row with data, last column with data,
+deepest active layer), smaller than `Grid` whenever the data do not reach
+the north or east edge of the grid. Cells never assigned hold 0, so they
+count as thin. `Grid(toi_filter)` with a logical mask smaller than `Grid`
+uses the mask's true positions as linear indices into `Grid`, so the mask
+is applied to the wrong cells, and mostly to the wrong layers.
+
+On Zealand, the mask lands only in layers 1–8, never on the active
+seismic layers 10–12, so MATLAB applies no thickness mask to them at all.
+On Jutland it lands in layers 1–28, so the deepest seismic layers get no
+thickness mask either. GeoSigma applies the mask to the cells and layers it
+describes.
+
+### Unknown complexity is blanked in the first layer only
+
+Module: `geosigma.themes.base` (class 0 -> no information). MATLAB:
+`complexity2(complexity==0) = NaN;` in `get_MEP_theme.m`,
+`get_PACEP_theme.m`, `get_PACES_theme.m`, `get_REFSEIS_theme.m`,
+`get_TEM_theme.m`, `get_fewTEM_theme.m`, `get_manyTEM_theme.m` and
+`get_tTEM_theme.m`.
+
+`complexity2` is a 3D array (one complexity grid per layer), but the mask
+`complexity==0` is 2D, so it selects cells in the first layer only. In the
+deeper layers, cells with unknown complexity keep class 0 and get the
+range at index 0 of the range table. `get_SkyTEM_theme.m` uses the 3D mask
+`complexities==0` and blanks every layer; `get_GAMMALOG_theme.m` and
+`get_RESLOG_theme.m` work on 2D grids, so the question does not arise
+there. GeoSigma blanks class 0 in every layer, as SkyTEM does. The two
+differ only at cells with unknown complexity (outside the complexity map)
+in layers below the first.
 
 ## Corrections that now match MATLAB
 
