@@ -679,11 +679,11 @@ GeoSigma states it as a range table, so each well keeps its real class.)
 > builder only indexes the tables; it cannot tell a reversed scale from a
 > correct one, and a reversed scale gives plausible-looking maps in which the
 > best-described boreholes count least. Some sources rate boreholes the other
-> way round (high = good). In the Danish national run this happened: the quality
-> rating in the borehole data was computed by a data-preparation script from
-> the Danish Environmental Protection Agency (Miljøstyrelsen, MST), and that
-> script turned out to swap good and bad. Neither the MATLAB code nor GeoSigma
-> was at fault; the inputs were reversed. Before building the `WellSet`s,
+> way round (high = good). In the Danish national input data from 2022/23 the
+> ratings were swapped: a sign error (a reversed comparison) in a
+> data-preparation script that runs before GeoSigma turned good into bad and
+> bad into good. The script has since been corrected. Neither the MATLAB code
+> nor GeoSigma was at fault; the inputs were reversed. Before building the `WellSet`s,
 > confirm on a few boreholes you know that the ones you trust most carry the
 > lowest numbers, and convert the rating if they do not.
 
