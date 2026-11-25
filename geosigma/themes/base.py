@@ -586,11 +586,64 @@ def build_theme(
         grid = 1.0 / certmap
 
     grid[np.isnan(grid)] = NODATA_VARIANCE
-    grid[spec.mask_fn(attrs)] = NODATA_VARIANCE
+    mask = spec.mask_fn(attrs)
+    grid[mask] = NODATA_VARIANCE
 
+    active = np.ones(n_layers, dtype=bool)
     if spec.active_layers is not None:
-        active = np.zeros(n_layers, dtype=bool)
+        active[:] = False
         active[np.asarray(spec.active_layers, dtype=int)] = True
         grid[:, :, ~active] = NODATA_VARIANCE
 
+    _warn_nonpositive_inputs(spec, data, var0map, local_dist, mask, active, n_layers)
     return grid
+
+
+def _layer_list(counts) -> str:
+    """``"L02: 12, L05: 3"`` for the non-zero per-layer counts (1-based labels)."""
+    return ", ".join(f"L{k + 1:02d}: {int(n)}" for k, n in enumerate(counts) if n)
+
+
+def _warn_nonpositive_inputs(spec, data, var0map, local_dist, mask, active, n_layers):
+    """Warn when a theme is fed ``thick <= 0`` or ends up with ``var0 <= 0``.
+
+    Only warns; the grid is never changed. ``var0 <= 0`` in a cell that a data
+    point informs gives zero (or negative) variance, i.e. infinite certainty.
+    For the TEM family ``thick`` is the thickness of the inversion-model layer
+    that holds the interpreted boundary, which is always positive; a value
+    ``<= 0`` usually means the column holds something else, such as the
+    thickness of a hydrostratigraphic layer (zero where it pinches out).
+    """
+    import warnings
+
+    from .combine import GeoSigmaWarning
+
+    if "thick" in spec.attributes:
+        thick = _broadcast_attr(data.attributes["thick"], n_layers)
+        bad = np.isfinite(thick) & (thick <= 0) & active[None, :]
+        if bad.any():
+            warnings.warn(
+                f"theme {spec.name!r}: {int(bad.any(axis=1).sum())} data point(s) "
+                f"have thick <= 0 in an active layer ({_layer_list(bad.sum(axis=0))}). "
+                "For the TEM family, thick__L* is the thickness of the "
+                "inversion-model layer holding the interpreted boundary, always "
+                "> 0; it is not the thickness of the hydrostratigraphic layer. "
+                "See docs/theme_format.md.",
+                GeoSigmaWarning,
+                stacklevel=3,
+            )
+
+    var0 = np.broadcast_to(np.asarray(var0map, dtype=float), mask.shape)
+    informed = (
+        np.isfinite(local_dist)[:, :, None] & ~np.asarray(mask, bool) & active
+    )
+    bad = informed & np.isfinite(var0) & (var0 <= 0)
+    if bad.any():
+        warnings.warn(
+            f"theme {spec.name!r}: var0 <= 0 in {int(bad.sum())} informed cell(s) "
+            f"({_layer_list(bad.sum(axis=(0, 1)))}); those cells get zero or "
+            "negative variance, i.e. infinite certainty. Check the var0 formula "
+            "and its inputs (for example thick__L*, see docs/theme_format.md).",
+            GeoSigmaWarning,
+            stacklevel=3,
+        )

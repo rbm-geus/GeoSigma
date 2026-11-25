@@ -127,6 +127,51 @@ and, where a spec needs it per layer, is broadcast across layers by the engine.
 `NaN` is preserved. A per-point column named by the manifest but absent from the
 CSV raises.
 
+### 2.4 What `thick__L*` means
+
+`thick__L*` is **not** the thickness of a hydrostratigraphic layer. For the TEM
+family (SkyTEM, ground TEM, tTEM) it is the **thickness of the layer of the
+deterministic inversion model that holds the interpreted boundary**, at the
+sounding where the interpreter placed the point. It is always > 0 and usually
+grows with depth, because the layers of an inversion model get thicker with
+depth; a thickness-driven `var0` therefore makes the uncertainty of an
+interpreted boundary grow with depth. A boundary that lies in the inversion
+model's **half-space** (below its deepest interface) has no layer thickness:
+write `NaN`. `build_theme` warns (`GeoSigmaWarning`) when a spec that uses
+`thick` gets values `<= 0`, or when `var0 <= 0` in an informed cell.
+
+**Legacy code in the national input data.** The Danish 2022/23 inputs (the
+`dkm_odvthk_pos` arrays) do not use `NaN` for the half-space: they give the
+half-space a bottom at 10 000 m depth, so `thick = 10000 − top of the deepest
+inversion layer` (9 550–10 000 m). In the Jutland data this was checked for
+SkyTEM (567 362 soundings), manyTEM (2 021) and tTEM (190 092): every value
+≥ 1000 m has `layer top + thick = 10000`, lies in the deepest inversion layer
+of its sounding, and belongs to the deepest boundaries. Such a thickness gives
+a huge `var0` (practically no certainty), while `NaN` gives the no-information
+sentinel; both mean "no information" in practice.
+
+How the Danish themes use the field:
+
+| Theme | Use of `thick` | Meaning of the values |
+|---|---|---|
+| SkyTEM | `var0 = (0.5·1.2·thick)²`, `min` over the nearest points | Inversion-layer thickness (half-space: see above) |
+| manyTEM, tTEM | `var0 = (0.5·1.2·thick)²`, `mean` over the nearest points | Inversion-layer thickness (half-space: see above) |
+| fewTEM, PACES, PACEP, MEP | Not used (their `var0` depends on depth) | — |
+| GAMMALOG, RESLOG | Mask `thick < depth` | Interpretation, see below |
+| REFSEIS | Code, not a thickness | 20 = boundary not resolved, 10000 = resolved; active layers are those with values > 1000, and cells < 100 are masked |
+
+**Borehole logs (interpretation).** For GAMMALOG and RESLOG the national inputs
+model a log as one layer from the surface down to the log table's `maxdepth`:
+`thick` equals `maxdepth` for every boundary at or above it and is 10 000 for
+every boundary below it (Jutland input files: 286 gamma and 162 resistivity logs, no
+exceptions). This fits reading `thick` as **how deep the log reaches**, with the
+mask `thick < depth` meant to drop boundaries the log does not reach. Whether
+`maxdepth` is the depth of the log or of the borehole is not recorded in the
+data. Note that with the half-space code the mask never fires on the national
+data: a boundary below `maxdepth` gets `thick = 10000`, which is not less than
+its depth. GeoSigma reproduces this as it is; if you supply your own logs, give
+the log's reach as `thick` for every boundary.
+
 ---
 
 ## 3. The manifest
