@@ -305,6 +305,19 @@ counts in the combination.
 `(0.5·max(2, 0.25·depth))²`; the thickness-driven TEM methods `(0.5·1.2·thick)²`;
 MEP switches formula by acquisition type (Wenner-2D vs other).
 
+> **What `thick` is.** For the TEM family, `thick` is the thickness of the layer
+> of the deterministic inversion model that holds the interpreted boundary, at
+> the sounding where the interpreter placed the point. It is always > 0 and
+> usually grows with depth, because the inversion model's layers get thicker
+> with depth, so the uncertainty of an interpreted boundary grows with depth.
+> It is **not** the thickness of the hydrostratigraphic layer, which is zero
+> where a layer pinches out and would give `var0 = 0`, i.e. infinite certainty
+> (`build_theme` warns about both). Write `NaN` where the boundary lies in the
+> inversion model's half-space. Reflection seismic uses the field as a code
+> (20 = not resolved, 10000 = resolved), and the borehole logs use it for the
+> log's reach. See [`theme_format.md` §2.4](theme_format.md#24-what-thick__l-means)
+> for the full table.
+
 ## Choice 7 — Where the source can see the boundary (reach and shallow floor)
 
 **Question.** Under what conditions does this source carry *no* usable information
@@ -331,8 +344,10 @@ propagates into the combination as if it were evidence.
 
 **Danish illustration [methods citation].** The TEM methods mask where the
 depth-of-investigation is shallower than the boundary (`doi < depth`); the logs
-mask where the logged thickness is less than the boundary depth; reflection seismic
-masks layers thinner than 100 m. Shallow floors vary by method — e.g. SkyTEM
+mask where the log's reach (`thick`, read as how deep the log goes; see
+[`theme_format.md` §2.4](theme_format.md#24-what-thick__l-means)) is less than the
+boundary depth; reflection seismic masks cells whose resolution code is below 100
+(20 = not resolved). Shallow floors vary by method — e.g. SkyTEM
 excludes boundaries above 5 m, the resistivity log above 10 m.
 
 ### Two kinds of "no information": the sentinel and `inf`
@@ -509,8 +524,10 @@ value is more honest than a spurious per-point column. Record which columns fed
 which attributes (and whether they are raw or already processed) in the provenance
 notes.
 
-**Danish illustration [methods citation].** Interpreted depths and thicknesses come from
-the model's per-layer depth and thickness arrays; the depth-of-investigation from a
+**Danish illustration [methods citation].** Interpreted depths come from the model's
+per-layer depth array, and `thick` from the per-layer thickness of the inversion-model
+layer holding each boundary (`dkm_odvthk_pos`; see
+[`theme_format.md` §2.4](theme_format.md#24-what-thick__l-means)); the depth-of-investigation from a
 `doilower` column; MEP's acquisition type from a `datasubtype` column (1 if it
 begins "wen", else 0). The two borehole-log themes read UTM coordinates from
 differently-named columns than the geophysical themes. PACES supplies only depth and
