@@ -29,6 +29,14 @@ fewTEM, manyTEM, tTEM and the gamma and resistivity logs. These specs use
 :mod:`geosigma.themes.certainty_functions`). To reproduce the MATLAB grids, set
 ``cert_fun_name="ILM_sep2023"`` and ``allow_legacy_cert_fun=True`` on the spec
 (``dataclasses.replace``). PACES and REFSEIS keep ``FRAFA_apr2023``.
+
+**Borehole-log mask.** The second deliberate change: GAMMALOG and RESLOG mask a
+boundary that lies deeper than the log reaches (``depth > doi``, with ``doi``
+the log's maximum depth, one value per log). The MATLAB themes masked on
+``thick < depth``, and the national inputs code ``thick`` so that this never
+fires (see ``docs/deviations_from_matlab.md``). To reproduce the MATLAB grids,
+use ``attributes=("depth", "thick")``, ``reducers={"depth": "mean", "thick":
+"min"}`` and ``mask_fn=lambda a: a["thick"] < a["depth"]``.
 """
 
 from __future__ import annotations
@@ -202,19 +210,33 @@ def _make_mep_post_reduce(doi_fill):
 
 
 def gammalog_spec(n_prereq: int) -> ThemeSpec:
-    """Gamma-log theme (search radius 6; min thickness)."""
+    """Gamma-log theme (search radius 6).
+
+    ``doi`` is the log's reach: the maximum depth below terrain the log covers,
+    one value per log. A boundary deeper than the log (``depth > doi``) gets no
+    information from it. Where several logs tie at the nearest distance, the
+    shallowest reach is used (``min``).
+    """
     return ThemeSpec(
         name="GAMMALOG",
         search_radius=6,
         # no pre-Q override (MATLAB no-op): both regimes share the graded table.
         range_model=_two_regime(n_prereq, _COMP2RANGE, _COMP2RANGE_PREQ_LOG),
         cert_fun_name="kernel_with_point_tail",
-        attributes=("depth", "thick"),
-        reducers={"depth": "mean", "thick": "min"},
+        attributes=("depth", "doi"),
+        reducers={"depth": "mean", "doi": "min"},
         var0_fn=_gammalog_var0,
         kernel_fn=lambda a: np.full_like(a["depth"], 150.0),
-        mask_fn=lambda a: a["thick"] < a["depth"],
+        mask_fn=_below_log_reach,
     )
+
+
+def _below_log_reach(a):
+    """Mask boundaries deeper than the log reaches (``depth > doi``).
+
+    A missing reach (``NaN``) masks nothing.
+    """
+    return a["depth"] > a["doi"]
 
 
 def _gammalog_var0(a):
@@ -225,18 +247,24 @@ def _gammalog_var0(a):
 
 
 def reslog_spec(n_prereq: int) -> ThemeSpec:
-    """Resistivity-log theme (search radius 6; min thickness)."""
+    """Resistivity-log theme (search radius 6).
+
+    ``doi`` is the log's reach: the maximum depth below terrain the log covers,
+    one value per log. A boundary deeper than the log (``depth > doi``) gets no
+    information from it. Where several logs tie at the nearest distance, the
+    shallowest reach is used (``min``).
+    """
     return ThemeSpec(
         name="RESLOG",
         search_radius=6,
         # no pre-Q override (MATLAB no-op): both regimes share the graded table.
         range_model=_two_regime(n_prereq, _COMP2RANGE, _COMP2RANGE_PREQ_LOG),
         cert_fun_name="kernel_with_point_tail",
-        attributes=("depth", "thick"),
-        reducers={"depth": "mean", "thick": "min"},
+        attributes=("depth", "doi"),
+        reducers={"depth": "mean", "doi": "min"},
         var0_fn=_reslog_var0,
         kernel_fn=lambda a: np.full_like(a["depth"], 150.0),
-        mask_fn=lambda a: a["thick"] < a["depth"],
+        mask_fn=_below_log_reach,
     )
 
 

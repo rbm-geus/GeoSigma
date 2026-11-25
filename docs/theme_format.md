@@ -157,20 +157,19 @@ How the Danish themes use the field:
 | SkyTEM | `var0 = (0.5·1.2·thick)²`, `min` over the nearest points | Inversion-layer thickness (half-space: see above) |
 | manyTEM, tTEM | `var0 = (0.5·1.2·thick)²`, `mean` over the nearest points | Inversion-layer thickness (half-space: see above) |
 | fewTEM, PACES, PACEP, MEP | Not used (their `var0` depends on depth) | — |
-| GAMMALOG, RESLOG | Mask `thick < depth` | Interpretation, see below |
+| GAMMALOG, RESLOG | Not used; the mask uses `doi` (the log's reach) | The national inputs code the log's reach in it, see below |
 | REFSEIS | Code, not a thickness | 20 = boundary not resolved, 10000 = resolved; active layers are those with values > 1000, and cells < 100 are masked |
 
-**Borehole logs (interpretation).** For GAMMALOG and RESLOG the national inputs
-model a log as one layer from the surface down to the log table's `maxdepth`:
-`thick` equals `maxdepth` for every boundary at or above it and is 10 000 for
-every boundary below it (Jutland input files: 286 gamma and 162 resistivity logs, no
-exceptions). This fits reading `thick` as **how deep the log reaches**, with the
-mask `thick < depth` meant to drop boundaries the log does not reach. Whether
-`maxdepth` is the depth of the log or of the borehole is not recorded in the
-data. Note that with the half-space code the mask never fires on the national
-data: a boundary below `maxdepth` gets `thick = 10000`, which is not less than
-its depth. GeoSigma reproduces this as it is; if you supply your own logs, give
-the log's reach as `thick` for every boundary.
+**Borehole logs.** GAMMALOG and RESLOG take the log's reach as the per-point
+`doi` column: the maximum depth below terrain the log covers, one value per log
+(in the Danish inputs, the log table's `maxdepth`). A boundary deeper than that
+(`depth > doi`) gets no information from the log. The national inputs also
+encode the reach in `thick`: a log is modelled as one layer from the surface
+down to `maxdepth`, so `thick` equals `maxdepth` for every boundary at or above
+it and is 10 000 for every boundary below it (Jutland: 235 gamma and 133
+resistivity logs, no exceptions). The MATLAB scripts masked `thick < depth`,
+which with that code never fires; see
+[deviations_from_matlab.md](deviations_from_matlab.md#borehole-logs-the-depth-mask-never-fires).
 
 ---
 

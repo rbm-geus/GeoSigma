@@ -121,9 +121,10 @@ reducer rarely bites — but set it deliberately, because dense data will exerci
 it.
 
 **Danish illustration [methods citation].** Interpreted depth is always reduced by
-`mean`. Layer thickness is reduced by `min` for the logs and SkyTEM, `mean` for
-many-layer and towed TEM, and `max` for reflection seismic. MEP's acquisition
-type uses `first`.
+`mean`. Layer thickness is reduced by `min` for SkyTEM, `mean` for many-layer
+and towed TEM, and `max` for reflection seismic. The logs reduce their reach
+(`doi`) by `min`, so the shallowest of tied logs decides. MEP's acquisition type
+uses `first`.
 
 ## Choice 3 — Correlation range vs geological complexity (and a deep-layer regime)
 
@@ -314,8 +315,8 @@ MEP switches formula by acquisition type (Wenner-2D vs other).
 > where a layer pinches out and would give `var0 = 0`, i.e. infinite certainty
 > (`build_theme` warns about both). Write `NaN` where the boundary lies in the
 > inversion model's half-space. Reflection seismic uses the field as a code
-> (20 = not resolved, 10000 = resolved), and the borehole logs use it for the
-> log's reach. See [`theme_format.md` §2.4](theme_format.md#24-what-thick__l-means)
+> (20 = not resolved, 10000 = resolved), and the national borehole-log inputs encode the
+> log's reach in it (the log specs read the reach from `doi`). See [`theme_format.md` §2.4](theme_format.md#24-what-thick__l-means)
 > for the full table.
 
 ## Choice 7 — Where the source can see the boundary (reach and shallow floor)
@@ -344,9 +345,9 @@ propagates into the combination as if it were evidence.
 
 **Danish illustration [methods citation].** The TEM methods mask where the
 depth-of-investigation is shallower than the boundary (`doi < depth`); the logs
-mask where the log's reach (`thick`, read as how deep the log goes; see
-[`theme_format.md` §2.4](theme_format.md#24-what-thick__l-means)) is less than the
-boundary depth; reflection seismic masks cells whose resolution code is below 100
+mask boundaries deeper than the log's reach (`depth > doi`, with `doi` the log's
+maximum depth, one value per log; see
+[`theme_format.md` §2.4](theme_format.md#24-what-thick__l-means)); reflection seismic masks cells whose resolution code is below 100
 (20 = not resolved). Shallow floors vary by method — e.g. SkyTEM
 excludes boundaries above 5 m, the resistivity log above 10 m.
 
