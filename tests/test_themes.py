@@ -669,9 +669,10 @@ def test_log_specs_mask_boundaries_below_log_reach(factory):
     grid = build_theme(data, factory(n_prereq=3), grid_x, grid_y, 3)
     assert np.all(grid[:, :, 1] == NODATA_VARIANCE)
     assert np.all(grid[:, :, [0, 2]] < NODATA_VARIANCE)
-    # A missing reach (NaN) masks nothing.
+    # A missing reach (NaN) masks nothing, and build_theme warns about it.
     data.attributes["doi"] = np.array([np.nan])
-    grid = build_theme(data, factory(n_prereq=3), grid_x, grid_y, 3)
+    with pytest.warns(GeoSigmaWarning, match="have no doi"):
+        grid = build_theme(data, factory(n_prereq=3), grid_x, grid_y, 3)
     assert np.all(grid < NODATA_VARIANCE)
 
 
