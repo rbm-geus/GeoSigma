@@ -3,7 +3,8 @@
 # GeoSigma — original work.
 # Author:     Rasmus Bødker Madsen (rbm@geus.dk)
 # Co-authors: Frederik Falk; Claude (Anthropic)
-"""build_theme warns on thick <= 0 and var0 <= 0 without changing the grid."""
+"""build_theme warns on thick <= 0, var0 <= 0 and missing doi without changing
+the grid."""
 
 from __future__ import annotations
 
@@ -94,4 +95,62 @@ def test_warning_does_not_change_the_grid():
         g_silent = build_theme(_skytem_data(thick), spec, GX, GY, N_LAYERS)
     finally:
         base._warn_nonpositive_inputs = orig
+    np.testing.assert_array_equal(g, g_silent)
+
+
+def _log_data(doi):
+    """Two gamma logs; the second one's doi may be NaN."""
+    return ThemeData(
+        xs=np.array([150.0, 350.0]),
+        ys=np.array([150.0, 250.0]),
+        attributes={
+            "depth": np.array([[20.0, 40.0, 60.0], [20.0, 40.0, 60.0]]),
+            "doi": np.asarray(doi, dtype=float),
+        },
+        complexity=np.full((GY.size, GX.size), 2.0),
+    )
+
+
+def test_missing_doi_warns_for_a_doi_masked_theme():
+    spec = theme_specs.gammalog_spec(n_prereq=2)
+    with pytest.warns(GeoSigmaWarning, match="have no doi") as rec:
+        build_theme(_log_data([50.0, np.nan]), spec, GX, GY, N_LAYERS)
+    msg = next(str(w.message) for w in rec if "have no doi" in str(w.message))
+    assert "1 data point(s) have a NaN doi" in msg
+    assert "L03" in msg  # informed by the NaN-doi log below the other log's reach
+
+
+def test_full_doi_does_not_warn():
+    spec = theme_specs.gammalog_spec(n_prereq=2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", GeoSigmaWarning)
+        build_theme(_log_data([50.0, 70.0]), spec, GX, GY, N_LAYERS)
+
+
+def test_filled_doi_does_not_warn():
+    """PACEP fills a NaN doi with 15 after the window pass: no warning."""
+    data = ThemeData(
+        xs=np.array([150.0]),
+        ys=np.array([150.0]),
+        attributes={"depth": np.array([[10.0, 12.0, 14.0]]), "doi": np.array([np.nan])},
+        complexity=np.full((GY.size, GX.size), 2.0),
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", GeoSigmaWarning)
+        build_theme(data, theme_specs.pacep_spec(n_prereq=2), GX, GY, N_LAYERS)
+
+
+def test_missing_doi_warning_does_not_change_the_grid():
+    spec = theme_specs.gammalog_spec(n_prereq=2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", GeoSigmaWarning)
+        g = build_theme(_log_data([50.0, np.nan]), spec, GX, GY, N_LAYERS)
+    from geosigma.themes import base
+
+    orig = base._warn_missing_doi
+    base._warn_missing_doi = lambda *a, **k: None
+    try:
+        g_silent = build_theme(_log_data([50.0, np.nan]), spec, GX, GY, N_LAYERS)
+    finally:
+        base._warn_missing_doi = orig
     np.testing.assert_array_equal(g, g_silent)

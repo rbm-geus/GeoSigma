@@ -121,9 +121,10 @@ reducer rarely bites — but set it deliberately, because dense data will exerci
 it.
 
 **Danish illustration [methods citation].** Interpreted depth is always reduced by
-`mean`. Layer thickness is reduced by `min` for the logs and SkyTEM, `mean` for
-many-layer and towed TEM, and `max` for reflection seismic. MEP's acquisition
-type uses `first`.
+`mean`. Layer thickness is reduced by `min` for SkyTEM, `mean` for many-layer
+and towed TEM, and `max` for reflection seismic. The logs reduce their reach
+(`doi`) by `min`, so the shallowest of tied logs decides. MEP's acquisition type
+uses `first`.
 
 ## Choice 3 — Correlation range vs geological complexity (and a deep-layer regime)
 
@@ -176,7 +177,9 @@ the theme.
 
 **Danish illustration [methods citation].** Most themes use ranges of 500 / 400 / 250 /
 100 m for complexity classes 1–4 (least to most complex), with a pre-Quaternary
-override of 500 m for the deep layers. Towed TEM instead uses a flat 100 m for every class and depth.
+override of 500 m for the deep layers; the gamma and resistivity logs use the same
+range model as the other geophysical themes. Towed TEM instead uses a flat 100 m for
+every class and depth.
 
 ## Choice 4 — The certainty decay kernel
 
@@ -273,10 +276,26 @@ depth-dependent width captures that; if not, a constant is right. Return a const
 for depth-independent support, or a function of `depth` for a footprint that
 widens.
 
-**Danish illustration [methods citation].** The logs use a constant 150; PACES/PACEP/MEP
-a constant 75; reflection seismic a constant 1 (essentially no plateau). SkyTEM
+**Danish illustration [methods citation].** The gamma and resistivity logs use 0 (no
+plateau, see below); PACES/PACEP/MEP a constant 75; reflection seismic a constant 1 (essentially no plateau). SkyTEM
 uses `max(2·depth, 75)` and the other TEM methods `max(depth, 75)` — a plateau that
 widens with depth.
+
+> **Borehole logs: a geophysical measurement without a spatial footprint.** A gamma
+> or resistivity log is a geophysical measurement made with an instrument in the
+> borehole, not borehole (lithology) data, so the logs are handled like the other
+> geophysical themes: the same engine, the same kernel (`kernel_with_point_tail`)
+> and the same range model. The one thing that sets them apart is that the
+> instrument's spatial sensitivity is negligible compared with the model grid: a
+> log measures at its x, y location. Their plateau is therefore 0, and with
+> `width = 0` the kernel is a pure Gaussian decay from the log,
+> `sill · exp(-3 d² / range²)`. The log's own `var0` and its reach (`doi`, see
+> choice 7) are unchanged. The national MATLAB run used a 150 m plateau and the
+> graded range table in every layer; on Jutland the change raises the
+> log-informed cell-layers from 454 957 to 680 589 (gamma and resistivity
+> together) and lowers the median final standard deviation in the affected cells
+> from 7.8 m to 4.6 m (see
+> [deviations_from_matlab.md](deviations_from_matlab.md#borehole-logs-point-measurements-without-a-plateau)).
 
 ## Choice 6 — The base interpretation variance (`var0`)
 
@@ -314,8 +333,8 @@ MEP switches formula by acquisition type (Wenner-2D vs other).
 > where a layer pinches out and would give `var0 = 0`, i.e. infinite certainty
 > (`build_theme` warns about both). Write `NaN` where the boundary lies in the
 > inversion model's half-space. Reflection seismic uses the field as a code
-> (20 = not resolved, 10000 = resolved), and the borehole logs use it for the
-> log's reach. See [`theme_format.md` §2.4](theme_format.md#24-what-thick__l-means)
+> (20 = not resolved, 10000 = resolved), and the national borehole-log inputs encode the
+> log's reach in it (the log specs read the reach from `doi`). See [`theme_format.md` §2.4](theme_format.md#24-what-thick__l-means)
 > for the full table.
 
 ## Choice 7 — Where the source can see the boundary (reach and shallow floor)
@@ -344,9 +363,9 @@ propagates into the combination as if it were evidence.
 
 **Danish illustration [methods citation].** The TEM methods mask where the
 depth-of-investigation is shallower than the boundary (`doi < depth`); the logs
-mask where the log's reach (`thick`, read as how deep the log goes; see
-[`theme_format.md` §2.4](theme_format.md#24-what-thick__l-means)) is less than the
-boundary depth; reflection seismic masks cells whose resolution code is below 100
+mask boundaries deeper than the log's reach (`depth > doi`, with `doi` the log's
+maximum depth, one value per log; see
+[`theme_format.md` §2.4](theme_format.md#24-what-thick__l-means)); reflection seismic masks cells whose resolution code is below 100
 (20 = not resolved). Shallow floors vary by method — e.g. SkyTEM
 excludes boundaries above 5 m, the resistivity log above 10 m.
 

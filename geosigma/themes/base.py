@@ -596,6 +596,7 @@ def build_theme(
         grid[:, :, ~active] = NODATA_VARIANCE
 
     _warn_nonpositive_inputs(spec, data, var0map, local_dist, mask, active, n_layers)
+    _warn_missing_doi(spec, data, attrs, grid, n_layers)
     return grid
 
 
@@ -634,9 +635,7 @@ def _warn_nonpositive_inputs(spec, data, var0map, local_dist, mask, active, n_la
             )
 
     var0 = np.broadcast_to(np.asarray(var0map, dtype=float), mask.shape)
-    informed = (
-        np.isfinite(local_dist)[:, :, None] & ~np.asarray(mask, bool) & active
-    )
+    informed = np.isfinite(local_dist)[:, :, None] & ~np.asarray(mask, bool) & active
     bad = informed & np.isfinite(var0) & (var0 <= 0)
     if bad.any():
         warnings.warn(
@@ -644,6 +643,38 @@ def _warn_nonpositive_inputs(spec, data, var0map, local_dist, mask, active, n_la
             f"({_layer_list(bad.sum(axis=(0, 1)))}); those cells get zero or "
             "negative variance, i.e. infinite certainty. Check the var0 formula "
             "and its inputs (for example thick__L*, see docs/theme_format.md).",
+            GeoSigmaWarning,
+            stacklevel=3,
+        )
+
+
+def _warn_missing_doi(spec, data, attrs, grid, n_layers):
+    """Warn when a theme that masks with ``doi`` informs cells whose ``doi`` is NaN.
+
+    Only warns; the grid is never changed. A NaN ``doi`` makes a comparison
+    such as ``depth > doi`` false, so the mask cannot remove anything there and
+    the data point informs the boundary at every depth. The check runs after
+    ``post_reduce_fn``, so specs that fill a missing ``doi`` on purpose (PACEP,
+    MEP) never warn.
+    """
+    if "doi" not in spec.attributes or "doi" not in attrs:
+        return
+    import warnings
+
+    from .combine import GeoSigmaWarning
+
+    doi = np.broadcast_to(np.asarray(attrs["doi"], dtype=float), grid.shape)
+    bad = np.isnan(doi) & (grid < NODATA_VARIANCE)
+    if bad.any():
+        raw = _broadcast_attr(data.attributes["doi"], n_layers)
+        n_points = int(np.isnan(raw).any(axis=1).sum())
+        warnings.warn(
+            f"theme {spec.name!r}: {int(bad.sum())} informed cell(s) have no doi "
+            f"(NaN) ({_layer_list(bad.sum(axis=(0, 1)))}); {n_points} data "
+            "point(s) have a NaN doi. The doi mask cannot apply there, so those "
+            "points inform the boundary at any depth. Supply doi for every point "
+            "(for borehole logs, the log's maximum depth); see "
+            "docs/theme_format.md.",
             GeoSigmaWarning,
             stacklevel=3,
         )

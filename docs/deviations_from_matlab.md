@@ -36,6 +36,8 @@ back in line with MATLAB.
 | Layer stacking | No pre-Quaternary binding branch | MATLAB: region-specific branch in `get_layered_models.m` | Out of scope (region-specific) |
 | REFSEIS thickness mask (themes) | Thin-layer mask applied to the cells it describes | MATLAB: mask applied at shifted linear indices (`get_REFSEIS_theme.m`) | Not available (validation harness only) |
 | Unknown complexity (themes) | Class 0 blanked in every layer | MATLAB: blanked in the first modelled layer only (eight themes) | Not available (validation harness only) |
+| Borehole logs as point measurements (themes) | Plateau 0 and the geophysical two-regime range model | MATLAB: 150 m plateau, graded range table in every layer (`get_GAMMALOG_theme.m`, `get_RESLOG_theme.m`) | Not available (validation harness only) |
+| Borehole-log mask (themes) | GAMMALOG/RESLOG mask boundaries below the log's reach (`depth > doi`, `doi` = `maxdepth`) | MATLAB: `thick < depth`, which never fires on the national data (`get_GAMMALOG_theme.m`, `get_RESLOG_theme.m`) | Not available (validation harness only) |
 | Certainty function (themes) | Danish specs use `kernel_with_point_tail` | MATLAB national run: `ILM_sep2023` (sign error); also `RBM_oct2023` (jump at the plateau edge) | `cert_fun_name="ILM_sep2023"` (or `"RBM_oct2023"`) with `allow_legacy_cert_fun=True` |
 
 ## Deliberate deviations (simulation, v1.0.0)
@@ -159,11 +161,54 @@ translated: the pre-Quaternary binding branch, which is Danish
 region-specific logic driven by `landsdel_switch`, and the onshore-mask test
 for "not simulated here". Unsimulated cells are given as NaN instead.
 
+## Deliberate deviations (variance maps, v0.1.0)
+
+### Borehole logs: point measurements without a plateau
+
+Module: `geosigma.themes.themes.gammalog_spec` and `reslog_spec`. MATLAB:
+`get_GAMMALOG_theme.m` and `get_RESLOG_theme.m` (`kernel = 150`, `rangemap =
+complexity` with the graded `comp2range`).
+
+A gamma or resistivity log is a geophysical measurement made with an instrument
+in the borehole, so GeoSigma handles the logs like the other geophysical themes:
+the same engine, the same certainty kernel (`kernel_with_point_tail`) and the
+same two-regime range model (the graded table in the Quaternary layers, a flat
+500 m from the first pre-Quaternary layer). What sets the logs apart is that the
+instrument's spatial sensitivity is negligible compared with the model grid, so
+their plateau half-width is 0. With `width = 0` the kernel is a pure Gaussian
+decay from the log, `sill · exp(-3 d² / range²)`. The log's own `var0` and the
+depth mask (`depth > doi`, see below) are kept.
+
+MATLAB used a 150 m plateau, which treats a log as if it informed a 150 m
+neighbourhood at full strength. Its pre-Quaternary range override was a no-op
+for the logs (`rangemap = complexity` is 2D, so `rangemap(:,:,Npreq:end) = ...`
+indexes a singleton dimension), so the graded Quaternary table applied in every
+layer.
+
+Effect on Jutland, relative to GeoSigma with the 150 m plateau and the MATLAB
+range table (all 43 layers, full grid, every other theme unchanged):
+
+| | Before | After |
+|---|---|---|
+| Log-informed cell-layers, gamma | 285 934 | 397 856 |
+| Log-informed cell-layers, resistivity | 169 023 | 282 733 |
+| Median final std, all 397 949 changed cell-layers | 7.83 m | 4.55 m |
+| Median final std, Quaternary layers (115 655) | 3.80 m | 4.12 m |
+| Median final std, pre-Quaternary layers (282 294) | 10.22 m | 4.69 m |
+
+In the Quaternary layers only the plateau changes: without it a log informs
+less at a distance, so the final standard deviation rises a little (median
++0.08 m, at most +12.2 m, in complex cells with a 100 m range 100–200 m from a
+log). In the pre-Quaternary layers the range grows from 100–400 m to 500 m, so
+the logs inform far more cells and the final standard deviation falls (median
+−3.6 m, at most −26.2 m). 118 865 cell-layers gain log information and 3 815
+lose it.
+
 ## MATLAB errors not reproduced (variance maps, v0.1.0)
 
-Two errors in the MATLAB theme scripts change which cells a theme informs,
+Three errors in the MATLAB theme scripts change which cells a theme informs,
 and two MATLAB certainty functions are flawed. GeoSigma does what the MATLAB
-code evidently intends. The private validation harness emulates the two
+code evidently intends. The private validation harness emulates the three
 errors and uses the legacy certainty functions, so the comparison against
 the MATLAB grids stays cell by cell; with the emulation, REFSEIS on Zealand
 is bit-exact (see the [README](../README.md)).
@@ -208,7 +253,32 @@ there. GeoSigma blanks class 0 in every layer, as SkyTEM does. The two
 differ only at cells with unknown complexity (outside the complexity map)
 in layers below the first.
 
-### Certainty functions: `ILM_sep2023` and `RBM_oct2023` are legacy
+### Borehole logs: the depth mask never fires
+
+Module: `geosigma.themes.themes.gammalog_spec` and `reslog_spec`. MATLAB:
+`get_GAMMALOG_theme.m` and `get_RESLOG_theme.m`,
+`doi_filter = local_model_thick < local_depth; Grid(doi_filter) = 100000;`.
+
+The mask is meant to drop boundaries deeper than the log reaches. Both scripts
+read the log's reach (`DOIs = table2array(MEP.InfoTable(:,"maxdepth"))`) but
+never use it; the mask compares the boundary depth with the thickness array
+instead. In the national inputs that array models a log as one layer from the
+surface to `maxdepth`: `thick` equals `maxdepth` for every boundary at or above
+it and is 10 000 (the half-space code) for every boundary below it. A boundary
+below the log therefore gets `thick = 10000`, which is never less than its
+depth, and the mask never fires. Every boundary within the search radius of a
+log, however deep, is informed by it with the log's full certainty (gamma
+`var0 = 2.25 m²`; resistivity `var0 = 0.25 + (0.045 depth)²`).
+
+GeoSigma gives each log its reach as the per-point attribute `doi`
+(`maxdepth`) and masks `depth > doi`; where several logs tie at the nearest
+distance, the shallowest reach is used. Masked cells get the no-information
+value, like every other mask.
+
+On Jutland (national run, MATLAB kernel, full grid) this removes log
+information from 31 781 cell-layers, at most 1 505 cells in any one layer. In
+those cells the median final combined standard deviation rises from 2.1 m to
+21 m (95th percentile of the increase 31 m, maximum 48 m).
 
 Module: `geosigma.themes.certainty_functions`. MATLAB:
 `certainty_function_definer.m`.
