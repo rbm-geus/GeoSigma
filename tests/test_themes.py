@@ -675,6 +675,38 @@ def test_log_specs_mask_boundaries_below_log_reach(factory):
     assert np.all(grid < NODATA_VARIANCE)
 
 
+@pytest.mark.parametrize(
+    "factory", [theme_specs.gammalog_spec, theme_specs.reslog_spec]
+)
+def test_log_specs_decay_as_pure_gaussian_from_the_log(factory):
+    """A log is a point measurement (plateau 0): its certainty decays as
+    sill * exp(-3 d^2 / range^2) from the log, with no plateau, using the
+    geophysical two-regime range model (graded Quaternary, flat 500 m below)."""
+    grid_x = np.arange(13) * 100.0
+    grid_y = np.arange(13) * 100.0
+    x0, y0 = 630.0, 570.0
+    depth = np.array([[40.0, 80.0]])
+    data = ThemeData(
+        xs=np.array([x0]),
+        ys=np.array([y0]),
+        attributes={"depth": depth, "doi": np.array([500.0])},
+        complexity=np.full((13, 13), 3.0),  # class 3 -> 250 m (Quaternary)
+    )
+    spec = factory(n_prereq=1)  # layer 0 Quaternary, layer 1 pre-Quaternary
+    grid = build_theme(data, spec, grid_x, grid_y, 2)
+
+    X, Y = np.meshgrid(grid_x, grid_y)
+    d = np.sqrt((X - x0) ** 2 + (Y - y0) ** 2)
+    var0 = spec.var0_fn({"depth": depth.reshape(1, 1, 2)}).ravel()
+    for layer, range_ in ((0, 250.0), (1, 500.0)):
+        informed = grid[:, :, layer] < NODATA_VARIANCE
+        assert informed.sum() > 50
+        expected = var0[layer] / np.exp(-3.0 * d**2 / range_**2)
+        np.testing.assert_allclose(
+            grid[:, :, layer][informed], expected[informed], rtol=1e-12
+        )
+
+
 # ---------------------------------------------------------------------------
 # Golden regression (deterministic stages)
 # ---------------------------------------------------------------------------

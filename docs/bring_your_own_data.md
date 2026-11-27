@@ -177,7 +177,9 @@ the theme.
 
 **Danish illustration [methods citation].** Most themes use ranges of 500 / 400 / 250 /
 100 m for complexity classes 1–4 (least to most complex), with a pre-Quaternary
-override of 500 m for the deep layers. Towed TEM instead uses a flat 100 m for every class and depth.
+override of 500 m for the deep layers; the gamma and resistivity logs use the same
+range model as the other geophysical themes. Towed TEM instead uses a flat 100 m for
+every class and depth.
 
 ## Choice 4 — The certainty decay kernel
 
@@ -274,10 +276,26 @@ depth-dependent width captures that; if not, a constant is right. Return a const
 for depth-independent support, or a function of `depth` for a footprint that
 widens.
 
-**Danish illustration [methods citation].** The logs use a constant 150; PACES/PACEP/MEP
-a constant 75; reflection seismic a constant 1 (essentially no plateau). SkyTEM
+**Danish illustration [methods citation].** The gamma and resistivity logs use 0 (no
+plateau, see below); PACES/PACEP/MEP a constant 75; reflection seismic a constant 1 (essentially no plateau). SkyTEM
 uses `max(2·depth, 75)` and the other TEM methods `max(depth, 75)` — a plateau that
 widens with depth.
+
+> **Borehole logs: a geophysical measurement without a spatial footprint.** A gamma
+> or resistivity log is a geophysical measurement made with an instrument in the
+> borehole, not borehole (lithology) data, so the logs are handled like the other
+> geophysical themes: the same engine, the same kernel (`kernel_with_point_tail`)
+> and the same range model. The one thing that sets them apart is that the
+> instrument's spatial sensitivity is negligible compared with the model grid: a
+> log measures at its x, y location. Their plateau is therefore 0, and with
+> `width = 0` the kernel is a pure Gaussian decay from the log,
+> `sill · exp(-3 d² / range²)`. The log's own `var0` and its reach (`doi`, see
+> choice 7) are unchanged. The national MATLAB run used a 150 m plateau and the
+> graded range table in every layer; on Jutland the change raises the
+> log-informed cell-layers from 454 957 to 680 589 (gamma and resistivity
+> together) and lowers the median final standard deviation in the affected cells
+> from 7.8 m to 4.6 m (see
+> [deviations_from_matlab.md](deviations_from_matlab.md#borehole-logs-point-measurements-without-a-plateau)).
 
 ## Choice 6 — The base interpretation variance (`var0`)
 

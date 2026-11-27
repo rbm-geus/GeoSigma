@@ -37,6 +37,14 @@ the log's maximum depth, one value per log). The MATLAB themes masked on
 fires (see ``docs/deviations_from_matlab.md``). To reproduce the MATLAB grids,
 use ``attributes=("depth", "thick")``, ``reducers={"depth": "mean", "thick":
 "min"}`` and ``mask_fn=lambda a: a["thick"] < a["depth"]``.
+
+**Borehole logs are point measurements.** A gamma or resistivity log is a
+geophysical measurement made with an instrument in the borehole, so the logs
+go through the same engine, kernel and range model as the other geophysical
+themes. What sets them apart is that their spatial sensitivity is negligible
+compared with the model grid: their plateau half-width is 0, so the certainty
+decays as a pure Gaussian from the log, ``sill * exp(-3 d^2 / range^2)``. The
+MATLAB themes used a 150 m plateau and the graded range table in every layer.
 """
 
 from __future__ import annotations
@@ -61,15 +69,12 @@ _COMP2RANGE_PREQ = [500, 500, 500, 500, 500]
 _COMP2RANGE_TTEM = [100, 100, 100, 100, 100]
 _COMP2RANGE_PREQ_TTEM = [100, 100, 100, 100, 100]
 
-# The borehole-LOG themes (GAMMALOG/RESLOG) effectively have NO pre-Quaternary
-# range override: in their MATLAB source the override is a dormant bug. Unlike
-# fewTEM/PACES (which set ``rangemap = complexities``, a 3D array), the log themes
-# set ``rangemap = complexity`` — a *2D* array — so the line
-# ``rangemap(:,:,Npreq:end) = ...`` indexes a singleton 3rd dimension and is a
-# no-op; the 2D graded ``comp2range`` is then broadcast across every layer. We
-# reproduce this bit-for-bit by giving the pre-Q table the same graded values as
-# ``comp2range`` (so the engine's override, if it fires, changes nothing).
-_COMP2RANGE_PREQ_LOG = _COMP2RANGE
+# The borehole-log themes (GAMMALOG/RESLOG) use the same two-regime range model
+# as the other geophysical themes. In their MATLAB source the pre-Quaternary
+# override is a no-op (``rangemap = complexity`` is 2D, so
+# ``rangemap(:,:,Npreq:end) = ...`` indexes a singleton dimension) and the
+# graded table applies in every layer; GeoSigma does not reproduce that (see
+# docs/deviations_from_matlab.md).
 
 
 def _two_regime(n_prereq, base_table, preq_table):
@@ -210,25 +215,30 @@ def _make_mep_post_reduce(doi_fill):
 
 
 def gammalog_spec(n_prereq: int) -> ThemeSpec:
-    """Gamma-log theme (search radius 6).
+    """Gamma-log theme (search radius 6; no plateau).
 
-    ``doi`` is the log's reach: the maximum depth below terrain the log covers,
-    one value per log. A boundary deeper than the log (``depth > doi``) gets no
-    information from it. Where several logs tie at the nearest distance, the
-    shallowest reach is used (``min``).
+    A log is a point measurement: plateau half-width 0, so the certainty decays
+    as a pure Gaussian from the log. ``doi`` is the log's reach: the maximum
+    depth below terrain the log covers, one value per log. A boundary deeper
+    than the log (``depth > doi``) gets no information from it. Where several
+    logs tie at the nearest distance, the shallowest reach is used (``min``).
     """
     return ThemeSpec(
         name="GAMMALOG",
         search_radius=6,
-        # no pre-Q override (MATLAB no-op): both regimes share the graded table.
-        range_model=_two_regime(n_prereq, _COMP2RANGE, _COMP2RANGE_PREQ_LOG),
+        range_model=_two_regime(n_prereq, _COMP2RANGE, _COMP2RANGE_PREQ),
         cert_fun_name="kernel_with_point_tail",
         attributes=("depth", "doi"),
         reducers={"depth": "mean", "doi": "min"},
         var0_fn=_gammalog_var0,
-        kernel_fn=lambda a: np.full_like(a["depth"], 150.0),
+        kernel_fn=_no_plateau,
         mask_fn=_below_log_reach,
     )
+
+
+def _no_plateau(a):
+    """Plateau half-width 0: a log's spatial sensitivity is negligible."""
+    return np.zeros_like(a["depth"])
 
 
 def _below_log_reach(a):
@@ -247,23 +257,23 @@ def _gammalog_var0(a):
 
 
 def reslog_spec(n_prereq: int) -> ThemeSpec:
-    """Resistivity-log theme (search radius 6).
+    """Resistivity-log theme (search radius 6; no plateau).
 
-    ``doi`` is the log's reach: the maximum depth below terrain the log covers,
-    one value per log. A boundary deeper than the log (``depth > doi``) gets no
-    information from it. Where several logs tie at the nearest distance, the
-    shallowest reach is used (``min``).
+    A log is a point measurement: plateau half-width 0, so the certainty decays
+    as a pure Gaussian from the log. ``doi`` is the log's reach: the maximum
+    depth below terrain the log covers, one value per log. A boundary deeper
+    than the log (``depth > doi``) gets no information from it. Where several
+    logs tie at the nearest distance, the shallowest reach is used (``min``).
     """
     return ThemeSpec(
         name="RESLOG",
         search_radius=6,
-        # no pre-Q override (MATLAB no-op): both regimes share the graded table.
-        range_model=_two_regime(n_prereq, _COMP2RANGE, _COMP2RANGE_PREQ_LOG),
+        range_model=_two_regime(n_prereq, _COMP2RANGE, _COMP2RANGE_PREQ),
         cert_fun_name="kernel_with_point_tail",
         attributes=("depth", "doi"),
         reducers={"depth": "mean", "doi": "min"},
         var0_fn=_reslog_var0,
-        kernel_fn=lambda a: np.full_like(a["depth"], 150.0),
+        kernel_fn=_no_plateau,
         mask_fn=_below_log_reach,
     )
 
